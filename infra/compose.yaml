@@ -1,0 +1,78 @@
+# Local AT network: one PDS and one PLC directory, reachable only from this machine.
+# Start it from the repo root with `npm run stack:up` (see infra/README.md).
+name: trustlab
+
+services:
+  plc-db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: plc
+      POSTGRES_PASSWORD: plc
+      POSTGRES_DB: plc
+    volumes:
+      - plc-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U plc -d plc"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  plc:
+    # Bluesky does not publish a public PLC image, so this builds the official
+    # did-method-plc server at a pinned commit.
+    build:
+      context: https://github.com/did-method-plc/did-method-plc.git#29f1a70ee9f6f80a25946cac103b2f745e371334
+      dockerfile: packages/server/Dockerfile
+    image: trustlab-plc:29f1a70
+    environment:
+      PORT: "2582"
+      ENABLE_MIGRATIONS: "true"
+      DB_CREDS_JSON: '{"username":"plc","password":"plc","host":"plc-db","database":"plc"}'
+      DB_MIGRATE_CREDS_JSON: '{"username":"plc","password":"plc","host":"plc-db","database":"plc"}'
+    depends_on:
+      plc-db:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:2582:2582"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:2582/_health"]
+      interval: 2s
+      timeout: 5s
+      retries: 60
+
+  pds:
+    image: ghcr.io/bluesky-social/pds:0.4.5051
+    environment:
+      # With the hostname "localhost" the PDS serves plain http at
+      # http://localhost:2583, and that is the address DID documents carry.
+      PDS_HOSTNAME: localhost
+      PDS_PORT: "2583"
+      PDS_DEV_MODE: "true"
+      # Never the real plc.directory: accounts register on the local PLC.
+      PDS_DID_PLC_URL: http://plc:2582
+      PDS_SERVICE_HANDLE_DOMAINS: .test
+      PDS_INVITE_REQUIRED: "false"
+      # Tell no relay about this PDS, so nothing reaches the public network.
+      PDS_CRAWLERS: ""
+      PDS_DATA_DIRECTORY: /pds
+      PDS_BLOBSTORE_DISK_LOCATION: /pds/blocks
+      PDS_JWT_SECRET: ${PDS_JWT_SECRET:?run npm run stack:up, which creates infra/.env}
+      PDS_ADMIN_PASSWORD: ${PDS_ADMIN_PASSWORD:?run npm run stack:up, which creates infra/.env}
+      PDS_PLC_ROTATION_KEY_K256_PRIVATE_KEY_HEX: ${PDS_PLC_ROTATION_KEY_K256_PRIVATE_KEY_HEX:?run npm run stack:up, which creates infra/.env}
+    depends_on:
+      plc:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:2583:2583"
+    volumes:
+      - pds-data:/pds
+    healthcheck:
+      test:
+        ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:2583/xrpc/_health"]
+      interval: 2s
+      timeout: 5s
+      retries: 60
+
+volumes:
+  plc-db:
+  pds-data:

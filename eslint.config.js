@@ -14,7 +14,13 @@ export default defineConfig([
   },
   {
     // CONTRIBUTING.md: the server, tests, and tooling may log.
-    files: ["services/**", "tools/**", "scripts/**", "**/*.test.ts"],
+    files: [
+      "services/**",
+      "tools/**",
+      "scripts/**",
+      "infra/**",
+      "**/*.test.ts",
+    ],
     rules: {
       "no-console": "off",
     },
@@ -23,6 +29,22 @@ export default defineConfig([
     files: ["scripts/**/*.mjs"],
     languageOptions: {
       globals: { console: "readonly", process: "readonly" },
+    },
+  },
+  {
+    // Plain Node scripts for the local AT network.
+    files: ["infra/**/*.mjs"],
+    languageOptions: {
+      globals: {
+        AbortSignal: "readonly",
+        Buffer: "readonly",
+        console: "readonly",
+        fetch: "readonly",
+        process: "readonly",
+        setTimeout: "readonly",
+        URL: "readonly",
+        WebSocket: "readonly",
+      },
     },
   },
 ]);
