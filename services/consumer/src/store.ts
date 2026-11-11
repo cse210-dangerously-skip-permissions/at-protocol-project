@@ -163,7 +163,11 @@ export class ConsumerStore {
       this.#db.exec("COMMIT");
       return applied;
     } catch (error) {
-      this.#db.exec("ROLLBACK");
+      try {
+        this.#db.exec("ROLLBACK");
+      } catch {
+        // SQLite already rolled back; rethrow the original error below.
+      }
       throw error;
     }
   }

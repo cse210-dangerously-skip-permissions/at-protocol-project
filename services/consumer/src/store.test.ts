@@ -203,6 +203,20 @@ describe("view and checkpoint stay in sync", () => {
     expectInSyncAt(store, 1);
   });
 
+  test("keeps the original error when SQLite has already rolled back", () => {
+    store.applyCommit(commit(1));
+
+    // RAISE(ROLLBACK) ends the transaction inside SQLite, as SQLITE_FULL or
+    // SQLITE_IOERR can, so the store's own ROLLBACK has nothing to undo.
+    execRaw(`
+      CREATE TRIGGER rollback_cursor BEFORE UPDATE ON feed_cursor
+      BEGIN SELECT RAISE(ROLLBACK, 'injected rollback'); END;
+    `);
+
+    expect(() => store.applyCommit(commit(2))).toThrow(/injected rollback/);
+    expectInSyncAt(store, 1);
+  });
+
   test("a connection that dies mid-transaction loses only the open commit", () => {
     store.applyCommit(commit(1));
     store.applyCommit(commit(2));
