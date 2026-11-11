@@ -1,0 +1,27 @@
+# Code owners: GitHub requests a review from the owning team on every PR
+# that touches these paths. The last matching pattern wins.
+# Team for each package comes from that package's README.
+
+# Default: repo tooling, CI, and docs
+* @cse210-dangerously-skip-permissions/foundation
+
+# Foundation
+/infra/ @cse210-dangerously-skip-permissions/foundation
+/tools/cli/ @cse210-dangerously-skip-permissions/foundation
+
+# Pipeline
+/services/publisher/ @cse210-dangerously-skip-permissions/pipeline
+/services/consumer/ @cse210-dangerously-skip-permissions/pipeline
+/packages/recovery/ @cse210-dangerously-skip-permissions/pipeline
+
+# Trust
+/services/witness/ @cse210-dangerously-skip-permissions/trust
+/packages/auditor/ @cse210-dangerously-skip-permissions/trust
+
+# Experiments
+/tools/harness/ @cse210-dangerously-skip-permissions/experiments
+
+# Contracts: owned by every team that uses them, so a change here
+# needs each consuming team to see it.
+/packages/contracts/ @cse210-dangerously-skip-permissions/foundation @cse210-dangerously-skip-permissions/pipeline @cse210-dangerously-skip-permissions/trust @cse210-dangerously-skip-permissions/experiments
+/lexicons/ @cse210-dangerously-skip-permissions/foundation @cse210-dangerously-skip-permissions/pipeline @cse210-dangerously-skip-permissions/trust @cse210-dangerously-skip-permissions/experiments
