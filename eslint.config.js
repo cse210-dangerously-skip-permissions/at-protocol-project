@@ -3,7 +3,7 @@ import { defineConfig, globalIgnores } from "eslint/config";
 import tseslint from "typescript-eslint";
 
 export default defineConfig([
-  globalIgnores(["**/dist/", "coverage/"]),
+  globalIgnores(["**/dist/", "coverage/", "test-results/"]),
   js.configs.recommended,
   tseslint.configs.recommended,
   {
@@ -14,7 +14,7 @@ export default defineConfig([
   },
   {
     // CONTRIBUTING.md: the server, tests, and tooling may log.
-    files: ["services/**", "tools/**", "scripts/**", "**/*.test.ts"],
+    files: ["services/**", "tools/**", "scripts/**", "e2e/**", "**/*.test.ts"],
     rules: {
       "no-console": "off",
     },
