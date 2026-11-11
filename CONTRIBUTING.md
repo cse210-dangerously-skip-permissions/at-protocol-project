@@ -35,7 +35,7 @@ New capabilities start as user-story issues (use the User story template) and ea
 
 ```
 npm run lint           # ESLint
-npm run typecheck      # JSDoc type check
+npm run typecheck      # TypeScript type check (tsc)
 npm test               # unit tests
 npm run test:coverage  # unit tests + coverage baseline check
 npm run test:e2e       # Playwright browser tests
@@ -49,4 +49,5 @@ npm run format:check   # Prettier check only
 
 - Formatting: Prettier default style (double quotes, semicolons, 2-space indent), enforced in CI. ESLint does not check formatting.
 - ESLint recommended rules, plus always `===` and `!==` (`eqeqeq`) and no `console` in app code (`no-console`). The server, tests, and tooling may log. Per-file exceptions live in `eslint.config.js`.
-- JSDoc on new or changed functions (also in the PR template checklist). `npm run typecheck` checks it against the code. The generated JSDoc site publishes to GitHub Pages.
+- TypeScript in strict mode everywhere (see docs/adr/0001-typescript-monorepo.md). `npm run typecheck` runs `tsc` in CI.
+- JSDoc comments on new or changed functions (also in the PR template checklist). Write types in TypeScript, not JSDoc tags.

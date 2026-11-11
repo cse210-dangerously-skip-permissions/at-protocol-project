@@ -14,9 +14,38 @@ export default defineConfig([
   },
   {
     // CONTRIBUTING.md: the server, tests, and tooling may log.
-    files: ["services/**", "tools/**", "scripts/**", "e2e/**", "**/*.test.ts"],
+    files: [
+      "services/**",
+      "tools/**",
+      "scripts/**",
+      "infra/**",
+      "e2e/**",
+      "**/*.test.ts",
+    ],
     rules: {
       "no-console": "off",
+    },
+  },
+  {
+    files: ["scripts/**/*.mjs"],
+    languageOptions: {
+      globals: { console: "readonly", process: "readonly" },
+    },
+  },
+  {
+    // Plain Node scripts for the local AT network.
+    files: ["infra/**/*.mjs"],
+    languageOptions: {
+      globals: {
+        AbortSignal: "readonly",
+        Buffer: "readonly",
+        console: "readonly",
+        fetch: "readonly",
+        process: "readonly",
+        setTimeout: "readonly",
+        URL: "readonly",
+        WebSocket: "readonly",
+      },
     },
   },
 ]);

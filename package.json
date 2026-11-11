@@ -16,10 +16,18 @@
   "scripts": {
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test:e2e": "playwright test",
+    "stack:up": "node infra/scripts/stack.mjs up",
+    "stack:check": "node infra/scripts/stack.mjs check",
+    "stack:seed": "node infra/scripts/stack.mjs seed",
+    "stack:down": "node infra/scripts/stack.mjs down",
+    "stack:reset": "node infra/scripts/stack.mjs reset",
+    "stack:logs": "node infra/scripts/stack.mjs logs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "prepare": "husky"
+    "prepare": "husky",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage && node scripts/check-coverage.mjs",
+    "test:e2e": "playwright test"
   },
   "lint-staged": {
     "*": "prettier --write --ignore-unknown"
@@ -28,11 +36,16 @@
     "@eslint/js": "^9.39.5",
     "@playwright/test": "^1.65.0",
     "@types/node": "^22.20.5",
+    "@vitest/coverage-v8": "^4.1.12",
     "eslint": "^9.39.5",
     "husky": "^9.1.7",
     "lint-staged": "^16.4.0",
     "prettier": "^3.9.10",
     "typescript": "^6.0.3",
-    "typescript-eslint": "^8.72.2"
+    "typescript-eslint": "^8.72.2",
+    "vitest": "^4.1.12"
+  },
+  "overrides": {
+    "vite": "^6.4.6"
   }
 }
