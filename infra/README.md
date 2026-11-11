@@ -27,13 +27,14 @@ The PLC directory also uses a Postgres container that is not published on any po
 
 Run these from the repo root.
 
-| Command               | What it does                                                           |
-| --------------------- | ---------------------------------------------------------------------- |
-| `npm run stack:up`    | Starts the network, waits until it is healthy, then runs `stack:check` |
-| `npm run stack:check` | Checks the running network end to end (below)                          |
-| `npm run stack:down`  | Stops the network and keeps its data                                   |
-| `npm run stack:reset` | Stops the network and deletes its data, for a clean start              |
-| `npm run stack:logs`  | Follows the containers' logs                                           |
+| Command               | What it does                                                                            |
+| --------------------- | --------------------------------------------------------------------------------------- |
+| `npm run stack:up`    | Starts the network, waits until it is healthy, then runs `stack:check` and `stack:seed` |
+| `npm run stack:check` | Checks the running network end to end (below)                                           |
+| `npm run stack:seed`  | Makes sure the seed accounts exist and writes `.env.local` (below)                      |
+| `npm run stack:down`  | Stops the network and keeps its data                                                    |
+| `npm run stack:reset` | Stops the network and deletes its data, for a clean start                               |
+| `npm run stack:logs`  | Follows the containers' logs                                                            |
 
 The first `stack:up` downloads the images and builds the PLC server, which takes a few minutes. Later starts take seconds.
 
@@ -47,6 +48,21 @@ The first `stack:up` downloads the images and builds the PLC server, which takes
 
 It deletes the probe account afterwards.
 
+### Seed accounts and `.env.local`
+
+`stack:seed` makes sure two accounts exist on the PDS, `publisher.test` and `witness.test`, and writes `.env.local` at the repo root. Git ignores that file. Services read these variables and never hardcode a DID:
+
+| Variable                                                  | What it is                        |
+| --------------------------------------------------------- | --------------------------------- |
+| `PDS_URL`                                                 | `http://localhost:2583`           |
+| `PLC_URL`                                                 | `http://localhost:2582`           |
+| `PUBLISHER_DID`, `PUBLISHER_HANDLE`, `PUBLISHER_PASSWORD` | The account that publishes events |
+| `WITNESS_DID`, `WITNESS_HANDLE`, `WITNESS_PASSWORD`       | The witness's own account         |
+
+These names are part of the contract between teams, so changing one needs the same sign-off as a change to `packages/contracts`.
+
+Running `stack:seed` again changes nothing. After `npm run stack:reset` the old accounts are gone, so the next `stack:up` creates new ones with new DIDs and replaces the file. If `.env.local` is lost while the accounts still exist, the passwords can't be recovered: run `npm run stack:reset`, then `npm run stack:up`.
+
 ### The scripts
 
 | File                 | What it holds                                                                      |
@@ -54,7 +70,8 @@ It deletes the probe account afterwards.
 | `scripts/stack.mjs`  | The commands: one function each for `up`, `check`, `down`, `reset`, and `logs`     |
 | `scripts/checks.mjs` | The `stack:check` steps, one named function each, in the order `runChecks()` calls |
 | `scripts/env.mjs`    | Creating and reading `infra/.env`                                                  |
-| `scripts/*.test.mjs` | Unit tests for the three files above. `npm test` runs them                         |
+| `scripts/seed.mjs`   | The `stack:seed` command: the seed accounts and `.env.local`                       |
+| `scripts/*.test.mjs` | Unit tests for the files above. `npm test` runs them                               |
 
 The unit tests need no Docker. `stack:check` tests the parts they can't: the containers themselves.
 
@@ -74,7 +91,7 @@ Data lives in two Docker volumes, `trustlab_pds-data` and `trustlab_plc-db`. The
 
 - Resolve DIDs against `http://localhost:2582`, not `https://plc.directory`.
 - Handles such as `publisher.test` don't resolve through DNS. Use DIDs, or ask the PDS with `com.atproto.identity.resolveHandle`.
-- The seed accounts and their credentials come from PLT-2 (#27).
+- The seed accounts and their credentials are in `.env.local` (above).
 
 ### What this network can't show
 
