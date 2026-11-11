@@ -6,7 +6,7 @@
 
 Use Node.js 22.5 or newer (`nvm use` reads `.nvmrc`), then run `npm install`. Installing also sets up the pre-commit hook that formats staged files.
 
-To run the local AT network (a PDS and a PLC directory in Docker), run `npm run stack:up`. [infra/README.md](infra/README.md) covers what it runs and how to use it.
+To run the local AT network (a PDS and a PLC directory in Docker), run `npm run stack:up`. It also creates the seed accounts and writes their DIDs to `.env.local`. [infra/README.md](infra/README.md) covers what it runs and how to use it.
 
 | Command                 | What it does                                                         |
 | ----------------------- | -------------------------------------------------------------------- |

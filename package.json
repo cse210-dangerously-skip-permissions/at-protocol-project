@@ -18,6 +18,7 @@
     "typecheck": "tsc --noEmit",
     "stack:up": "node infra/scripts/stack.mjs up",
     "stack:check": "node infra/scripts/stack.mjs check",
+    "stack:seed": "node infra/scripts/stack.mjs seed",
     "stack:down": "node infra/scripts/stack.mjs down",
     "stack:reset": "node infra/scripts/stack.mjs reset",
     "stack:logs": "node infra/scripts/stack.mjs logs",

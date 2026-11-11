@@ -1,7 +1,7 @@
 /**
  * Start, stop, reset, and check the local AT network in infra/compose.yaml.
  *
- * Usage: node infra/scripts/stack.mjs <up|check|down|reset|logs>
+ * Usage: node infra/scripts/stack.mjs <up|check|seed|down|reset|logs>
  * The root package.json runs each command as `npm run stack:<command>`.
  */
 import { spawnSync } from "node:child_process";
@@ -10,16 +10,19 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { runChecks } from "./checks.mjs";
 import { createEnvFile, readEnvValue } from "./env.mjs";
+import { seed as seedAccounts } from "./seed.mjs";
 
 const infraDir = join(dirname(fileURLToPath(import.meta.url)), "..");
 const composeFile = join(infraDir, "compose.yaml");
 const envFile = join(infraDir, ".env");
+const localEnvFile = join(infraDir, "..", ".env.local");
 
 // The commands.
 
 /**
  * `npm run stack:up`: create the secrets file if it is missing, start every
- * container, wait until all are healthy, then run the checks.
+ * container, wait until all are healthy, run the checks, then seed the
+ * test accounts.
  *
  * @returns {Promise<number>} The exit code.
  */
@@ -37,7 +40,8 @@ async function up() {
     );
     return code;
   }
-  return check();
+  const checked = await check();
+  return checked === 0 ? seed() : checked;
 }
 
 /**
@@ -50,6 +54,16 @@ function check() {
   return runChecks({
     adminPassword: readEnvValue(envFile, "PDS_ADMIN_PASSWORD"),
   });
+}
+
+/**
+ * `npm run stack:seed`: make sure the seed accounts exist and write
+ * .env.local at the repo root.
+ *
+ * @returns {Promise<number>} The exit code.
+ */
+function seed() {
+  return seedAccounts({ envPath: localEnvFile });
 }
 
 /**
@@ -122,7 +136,7 @@ export function isSupportedNode(version) {
  * @returns {Promise<number>} The exit code.
  */
 async function main(name) {
-  const commands = { up, check, down, reset, logs };
+  const commands = { up, check, seed, down, reset, logs };
   if (!isSupportedNode(process.versions.node)) {
     console.error(
       `The stack scripts need Node.js 22.5 or newer, like the rest of the repo. This is Node ${process.version}.`,
