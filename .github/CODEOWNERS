@@ -17,11 +17,9 @@
 # Trust
 /services/witness/ @cse210-dangerously-skip-permissions/trust
 /packages/auditor/ @cse210-dangerously-skip-permissions/trust
-
-# Experiments
-/tools/harness/ @cse210-dangerously-skip-permissions/experiments
+/tools/harness/ @cse210-dangerously-skip-permissions/trust
 
 # Contracts: owned by every team that uses them, so a change here
 # needs each consuming team to see it.
-/packages/contracts/ @cse210-dangerously-skip-permissions/foundation @cse210-dangerously-skip-permissions/pipeline @cse210-dangerously-skip-permissions/trust @cse210-dangerously-skip-permissions/experiments
-/lexicons/ @cse210-dangerously-skip-permissions/foundation @cse210-dangerously-skip-permissions/pipeline @cse210-dangerously-skip-permissions/trust @cse210-dangerously-skip-permissions/experiments
+/packages/contracts/ @cse210-dangerously-skip-permissions/foundation @cse210-dangerously-skip-permissions/pipeline @cse210-dangerously-skip-permissions/trust
+/lexicons/ @cse210-dangerously-skip-permissions/foundation @cse210-dangerously-skip-permissions/pipeline @cse210-dangerously-skip-permissions/trust
