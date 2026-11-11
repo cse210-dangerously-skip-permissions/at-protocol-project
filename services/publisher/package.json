@@ -5,5 +5,9 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@atproto/api": "^0.31.0",
+    "@trustlab/contracts": "*"
   }
 }
