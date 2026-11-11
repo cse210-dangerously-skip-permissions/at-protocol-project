@@ -1,0 +1,32 @@
+{
+  "lexicon": 1,
+  "id": "dev.trustlab.head",
+  "defs": {
+    "main": {
+      "type": "record",
+      "description": "The latest event in one of a publisher's streams. Updated every time an event is published. Record key: head-<stream>, such as head-releases.",
+      "key": "any",
+      "record": {
+        "type": "object",
+        "required": ["stream", "seq", "eventCid"],
+        "properties": {
+          "stream": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 32
+          },
+          "seq": {
+            "type": "integer",
+            "description": "The seq of the latest event.",
+            "minimum": 1
+          },
+          "eventCid": {
+            "type": "string",
+            "format": "cid",
+            "description": "CID of the event record at that seq."
+          }
+        }
+      }
+    }
+  }
+}
