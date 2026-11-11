@@ -19,6 +19,8 @@
     "packages/*/src",
     "services/*/src",
     "tools/*/src",
-    "vitest.config.ts"
+    "tests",
+    "vitest.config.ts",
+    "vitest.integration.config.ts"
   ]
 }

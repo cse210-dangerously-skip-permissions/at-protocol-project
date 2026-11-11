@@ -26,6 +26,7 @@
     "format:check": "prettier --check .",
     "prepare": "husky",
     "test": "vitest run",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:coverage": "vitest run --coverage && node scripts/check-coverage.mjs"
   },
   "lint-staged": {
