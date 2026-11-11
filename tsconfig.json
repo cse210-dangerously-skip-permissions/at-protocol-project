@@ -14,5 +14,10 @@
     "noEmit": true,
     "types": ["node"]
   },
-  "include": ["packages/*/src", "services/*/src", "tools/*/src"]
+  "include": [
+    "packages/*/src",
+    "services/*/src",
+    "tools/*/src",
+    "vitest.config.ts"
+  ]
 }

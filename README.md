@@ -6,12 +6,14 @@
 
 Use Node.js 22.5 or newer (`nvm use` reads `.nvmrc`), then run `npm install`. Installing also sets up the pre-commit hook that formats staged files.
 
-| Command                | What it does                     |
-| ---------------------- | -------------------------------- |
-| `npm run lint`         | ESLint across every package      |
-| `npm run typecheck`    | `tsc` in strict mode, whole repo |
-| `npm run format:check` | Prettier check only              |
-| `npm run format`       | Prettier, writing fixes          |
+| Command                 | What it does                                 |
+| ----------------------- | -------------------------------------------- |
+| `npm test`              | Unit tests (`src/**/*.test.ts`, any package) |
+| `npm run test:coverage` | Unit tests plus the coverage baseline check  |
+| `npm run lint`          | ESLint across every package                  |
+| `npm run typecheck`     | `tsc` in strict mode, whole repo             |
+| `npm run format:check`  | Prettier check only                          |
+| `npm run format`        | Prettier, writing fixes                      |
 
 ## Layout
 
