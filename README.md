@@ -6,14 +6,16 @@
 
 Use Node.js 22.5 or newer (`nvm use` reads `.nvmrc`), then run `npm install`. Installing also sets up the pre-commit hook that formats staged files.
 
-| Command                 | What it does                                 |
-| ----------------------- | -------------------------------------------- |
-| `npm test`              | Unit tests (`src/**/*.test.ts`, any package) |
-| `npm run test:coverage` | Unit tests plus the coverage baseline check  |
-| `npm run lint`          | ESLint across every package                  |
-| `npm run typecheck`     | `tsc` in strict mode, whole repo             |
-| `npm run format:check`  | Prettier check only                          |
-| `npm run format`        | Prettier, writing fixes                      |
+To run the local AT network (a PDS and a PLC directory in Docker), run `npm run stack:up`. It also creates the seed accounts and writes their DIDs to `.env.local`. [infra/README.md](infra/README.md) covers what it runs and how to use it.
+
+| Command                 | What it does                                                         |
+| ----------------------- | -------------------------------------------------------------------- |
+| `npm test`              | Unit tests (`src/**/*.test.ts` in any package, plus `infra/scripts`) |
+| `npm run test:coverage` | Unit tests plus the coverage baseline check                          |
+| `npm run lint`          | ESLint across every package                                          |
+| `npm run typecheck`     | `tsc` in strict mode, whole repo                                     |
+| `npm run format:check`  | Prettier check only                                                  |
+| `npm run format`        | Prettier, writing fixes                                              |
 
 ## Layout
 

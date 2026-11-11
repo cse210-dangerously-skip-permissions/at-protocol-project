@@ -18,4 +18,6 @@
 - [ ] `npm run lint` and `npm test` pass locally, CI green
 - [ ] JSDoc on new or changed functions
 - [ ] If this PR changes the UI: I uploaded before and after images
+- [ ] Contracts changed (`packages/contracts` or `lexicons/`): yes / no
+- [ ] AI-assisted: yes / no
 - [ ] Reviewer is not the author
