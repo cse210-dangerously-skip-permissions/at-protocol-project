@@ -1,20 +1,5 @@
 import { DatabaseSync } from "node:sqlite";
-
-/** One event record as the consumer keeps it in its view. */
-export interface StoredEvent {
-  /** DID of the publisher's repo. */
-  did: string;
-  /** Stream name, such as `releases`. */
-  stream: string;
-  /** Position in the stream, starting at 1. */
-  seq: number;
-  /** Record key in the repo, such as `releases-000000000042`. */
-  rkey: string;
-  /** CID of the record, as a string. */
-  cid: string;
-  /** The record itself, in a JSON-serializable form. */
-  record: unknown;
-}
+import type { ConsumerCheckpoint, StoredEvent } from "@trustlab/contracts";
 
 /** An event inside a commit. The DID comes from the commit. */
 export type CommitEvent = Omit<StoredEvent, "did">;
@@ -29,14 +14,6 @@ export interface VerifiedCommit {
   rev: string;
   /** Our events created by this commit. May be empty. */
   events: readonly CommitEvent[];
-}
-
-/** Where the consumer got to: the feed cursor and the last rev per DID. */
-export interface ConsumerCheckpoint {
-  /** Last firehose sequence number applied, or `null` before the first one. */
-  cursor: number | null;
-  /** Last applied repo revision, keyed by DID. */
-  revs: Record<string, string>;
 }
 
 /** Thrown when a commit carries a different CID for an event already stored. */
