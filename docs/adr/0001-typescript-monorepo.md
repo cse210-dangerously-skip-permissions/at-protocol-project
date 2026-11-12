@@ -1,7 +1,7 @@
 # ADR 001: TypeScript in one monorepo
 
-- Status: proposed
-- Date: 2026-11-10
+- Status: approved
+- Date: 2026-11-12
 
 ## Context
 
@@ -25,6 +25,5 @@ Strict TypeScript (`"strict": true`) for every service, the CLI, and all tests, 
 - Generated Lexicon code may need cleanup. If so, exclude it from compilation and wrap it with hand-written types.
 - The JSDoc docs site (#4) switches to TypeDoc or is closed.
 - Node is fast enough at this scale.
-- JSDoc docs (#4) become TypeDoc, or #4 gets closed.
-- There’s a build or typecheck step.
+- There’s a typecheck step (`npm run typecheck`) in CI.
 - Team is comfortable with TypeScript.
