@@ -26,15 +26,22 @@ A signature proves who signed something, not that it is honest or current. A wit
 
 ### Verdict rules
 
-The auditor applies these in order and stops at the first that matches.
+The auditor applies these in order and stops at the first that matches. The rules are the same for all four setups (S0, S1, A0, A1), including BSL-2 (#84) on the signed HTTP server. Only the verification step differs per evidence source, through the `verify` argument in #80. ADR-007's predictions rely on this.
+
+The chain the rules check is the one fetched from the PDS for this audit (a fresh rebuild, see Consequences), not a view the consumer stored earlier.
 
 1. **`conflict`: the chain alone is broken** (#79, rules in ADR-004). This needs no witness, so it does not wait for one.
-2. **`unknown`: the evidence cannot be fetched.** The PDS or witness is unreachable.
-3. **`conflict`: the chain contradicts a verified checkpoint** (#80). For any checkpoint that passes offline verification (publisher signature and MST proof):
+
+   One exception until #63 makes the event and head a single commit: a head exactly one seq behind the latest event, with the rest of the chain valid, is what an honest publisher leaves if it crashes between the two writes. It does not match this rule. Rules 2–4 still apply, and if none of them match, the result is `unknown` (`head-behind`) instead of `accept`. After #63, any head mismatch is `conflict`.
+
+2. **`unknown`: the evidence cannot be fetched.** The PDS is unreachable (`pds-unreachable`) or the witness is unreachable (`witness-unreachable`). If the PDS is unreachable there is no chain to check, so rule 1 cannot apply, even if a view stored earlier had a broken link. This is also how a long PDS outage (#70) ends up `unknown`.
+3. **`conflict`: the chain contradicts a verified checkpoint** (#80). For any checkpoint that passes offline verification (on AT: the commit signature, checked against the signing key in the publisher's DID document resolved from the PLC rather than the `signingKey` stored in the checkpoint, and the MST proof):
    - the current head is below the witnessed seq (`truncated`), or
    - the current event at the witnessed seq has a different CID than the one witnessed (`rewritten`).
 
    Every stored checkpoint is checked, not only the latest, because the latest may postdate the rewrite.
+
+   The stored `signingKey` must not be trusted: a dishonest witness could create its own key, sign a fake commit with it, store that key in the checkpoint, and frame an honest publisher. If the stored key does not match the DID document, for example after a rotation, the checkpoint is not verified and rule 4 applies (#96).
 
 4. **`unknown`: a checkpoint fails verification** (`bad-evidence`). A bad or broken witness must not be able to frame a publisher, so failed evidence never counts toward `conflict`.
 5. **`accept`: otherwise.** The chain is valid and extends every verified checkpoint (`extends-witness`), or there are no checkpoints yet (`no-witness`, a chain-only result).
@@ -59,7 +66,8 @@ The same reasoning applies to more than one witness, which is out of scope for P
 | Truncate below a witnessed head                               | Witness   | `conflict` (`truncated`)                                         | Core test                                  |
 | Edit an interior event in place, leaving later links          | Chain     | `conflict` (`broken-link`)                                       | Core test (A0 and A1 both reject)          |
 | Legitimate signed withdrawal or correction                    | —         | `accept`                                                         | Control                                    |
-| PDS or witness unreachable                                    | —         | `unknown`                                                        | Core test                                  |
+| PDS or witness unreachable                                    | —         | `unknown` (`pds-unreachable`, `witness-unreachable`)             | Core test                                  |
+| Honest publisher crashes between event and head write         | —         | `unknown` (`head-behind`), until #63                             | Core test                                  |
 | Witness serves only old checkpoints                           | —         | `accept`, but only proves history up to the newest seq it served | Accepted risk                              |
 | Rewrite before any honest witness saw the head                | Nothing   | `accept`                                                         | Out of scope                               |
 | Rewrite while the witness is down, repaired before it returns | Nothing   | `accept`                                                         | Out of scope                               |
@@ -84,6 +92,7 @@ With one honest witness that the consumer queries directly, every checkpoint is 
 - **Treat a checkpoint that fails verification as `conflict`:** It catches more, but lets a faulty or malicious witness frame an honest publisher.
 - **Skip checkpoints that fail verification and judge on the rest:** A single corrupt checkpoint would no longer turn every audit into `unknown`. But a checkpoint that fails verification means the witness store is corrupt or the witness is misbehaving, which breaks the honest-witness assumption. Reporting it as `unknown` makes that visible instead of hiding it.
 - **Return `unknown` when there are no checkpoints yet:** It is honest about missing evidence, but every A0 run would be `unknown`, so A0 would no longer be a usable baseline. `no-witness` keeps the result `accept` and records why.
+- **Use the consumer's own CID-change flags (#67) as evidence:** A long-running consumer that saw an event's CID change does hold an earlier view. But the flag is the consumer's own record, not publisher-signed evidence that anyone can verify offline, and the A0/A1 comparison is about a fresh consumer that has no such history. In P0 the flags do not affect the verdict. The auditor reports them next to it so they stay visible.
 - **A fourth verdict (`unresolved`) for key-rotation gaps, as the design doc mentions:** `VerdictKind` has three values, and key rotation is out of scope for P0, so it maps to `unknown`.
 
 ## Consequences
@@ -93,4 +102,6 @@ With one honest witness that the consumer queries directly, every checkpoint is 
 - Tamper tools need a re-linking suffix rewrite and a truncation, not only an in-place edit.
 - The A0/A1 detection rate is measured on witness-only scenarios. Chain-only scenarios are reported separately so they do not inflate A1's advantage.
 - In A0, the consumer audits a fresh rebuild and does not compare against its own earlier view. A long-running consumer that kept its view would itself act as a witness for everything it saw.
+- The CID-change flags from #67 are reported alongside the verdict and do not change it. #67 and #68 build to that.
+- `head-behind` and `pds-unreachable` are new reason codes for #79 and #80. `head-behind` goes away once #63 lands.
 - Adding more witnesses or sharing checkpoints between consumers requires witness signatures (#77) and a revisit of this ADR.
