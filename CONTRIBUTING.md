@@ -36,6 +36,7 @@ New capabilities start as user-story issues (use the User story template) and ea
 ```
 npm run lint           # ESLint
 npm run typecheck      # TypeScript type check (tsc)
+npm run docs           # TypeDoc API site in dist/docs
 npm test               # unit tests
 npm run test:coverage  # unit tests + coverage baseline check
 npm run test:e2e       # Playwright browser tests
