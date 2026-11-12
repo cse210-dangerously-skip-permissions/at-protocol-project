@@ -22,6 +22,7 @@
     "stack:down": "node infra/scripts/stack.mjs down",
     "stack:reset": "node infra/scripts/stack.mjs reset",
     "stack:logs": "node infra/scripts/stack.mjs logs",
+    "publish-events": "tsx services/publisher/src/cli.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "prepare": "husky",
@@ -42,6 +43,7 @@
     "husky": "^9.1.7",
     "lint-staged": "^16.4.0",
     "prettier": "^3.9.10",
+    "tsx": "^4.23.15",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.72.2",
     "vitest": "^4.1.12"

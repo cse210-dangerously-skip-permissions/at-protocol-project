@@ -29,6 +29,8 @@ export interface PublishInput {
   payload: Payload;
   /** For `correct` and `withdraw`: the seq of the event this one refers to. */
   refSeq?: number;
+  /** ISO 8601 time for the event. Defaults to now. */
+  createdAt?: string;
 }
 
 /** The result of publishing one event. */
@@ -126,7 +128,7 @@ export async function publishEvent(
       kind: input.kind,
       ...(input.refSeq === undefined ? {} : { refSeq: input.refSeq }),
       payload: input.payload,
-      createdAt: new Date().toISOString(),
+      createdAt: input.createdAt ?? new Date().toISOString(),
     },
     rkey,
   );

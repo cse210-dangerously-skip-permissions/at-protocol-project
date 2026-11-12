@@ -1,6 +1,8 @@
 import { AtpAgent } from "@atproto/api";
 import {
   EVENT_NSID,
+  HEAD_NSID,
+  headRkey,
   loadLocalEnv,
   parseEventRecord,
   parseEventRkey,
@@ -10,6 +12,7 @@ import {
   publishEvent,
   type Published,
   readHead,
+  runPublish,
 } from "@trustlab/publisher";
 import { beforeAll, expect, test } from "vitest";
 
@@ -85,4 +88,42 @@ test("publishing 10 events yields seq 1 to 10 with valid links and a head at 10"
 
   const head = await readHead(session, stream);
   expect(head).toMatchObject({ stream, seq: 10, eventCid: stored[9]?.cid });
+});
+
+test("the same seed on a fresh stream gets the same CIDs from the PDS", async () => {
+  const stream = `seed${Date.now().toString(36)}`;
+  const session = await login(env);
+  const args = { stream, count: 3, seed: 7 };
+  const lines: string[] = [];
+  const options = { session, log: (line: string) => lines.push(line) };
+
+  const first = await runPublish(args, options);
+  expect(lines).toEqual(
+    first.map(
+      (event) => `published ${stream} seq=${event.seq} cid=${event.cid}`,
+    ),
+  );
+
+  // Make the stream fresh again by deleting its records. Real publishers
+  // never delete events; this throwaway stream exists only for this check.
+  const repo = session.agent.com.atproto.repo;
+  for (const event of first) {
+    await repo.deleteRecord({
+      repo: session.did,
+      collection: EVENT_NSID,
+      rkey: event.rkey,
+    });
+  }
+  await repo.deleteRecord({
+    repo: session.did,
+    collection: HEAD_NSID,
+    rkey: headRkey(stream),
+  });
+  expect(await readHead(session, stream)).toBeNull();
+
+  const second = await runPublish(args, options);
+  expect(second.map((event) => event.seq)).toEqual([1, 2, 3]);
+  expect(second.map((event) => event.cid)).toEqual(
+    first.map((event) => event.cid),
+  );
 });
