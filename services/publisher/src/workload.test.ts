@@ -45,10 +45,11 @@ test("seededRandom stays in [0, 1) and repeats for a seed", () => {
   }
 });
 
-test("createdAt comes from the seed and index, and keeps event order", () => {
-  expect(workloadCreatedAt(1, 0)).toBe("2026-01-02T00:00:00.000Z");
-  expect(workloadCreatedAt(1, 2)).toBe("2026-01-02T00:00:02.000Z");
+test("createdAt comes from the seed and seq, and only moves forward", () => {
+  expect(workloadCreatedAt(1, 1)).toBe("2026-01-02T00:00:00.000Z");
+  expect(workloadCreatedAt(1, 3)).toBe("2026-01-02T00:00:02.000Z");
   expect(workloadCreatedAt(5, 3)).toBe(workloadCreatedAt(5, 3));
   expect(workloadCreatedAt(5, 3) < workloadCreatedAt(5, 4)).toBe(true);
-  expect(() => workloadCreatedAt(1, -1)).toThrow(RangeError);
+  expect(() => workloadCreatedAt(1, 0)).toThrow(RangeError);
+  expect(() => workloadCreatedAt(1, 1.5)).toThrow(RangeError);
 });

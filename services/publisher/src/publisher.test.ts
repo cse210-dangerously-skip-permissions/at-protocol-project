@@ -6,6 +6,7 @@ import { cidOf, FakeRepo, fakeSession } from "./test-support.js";
 
 const DID = "did:plc:publisher";
 const PAYLOAD = { name: "pkg", version: "1.0.0", checksum: "sha256:abc" };
+const CREATED_AT = "2026-01-01T00:00:00.000Z";
 
 let repo: FakeRepo;
 let session: PublisherSession;
@@ -17,7 +18,12 @@ beforeEach(() => {
 
 /** Publish one release on a stream. */
 function release(stream = "releases") {
-  return publishEvent(session, { stream, kind: "release", payload: PAYLOAD });
+  return publishEvent(session, {
+    stream,
+    kind: "release",
+    payload: PAYLOAD,
+    createdAt: CREATED_AT,
+  });
 }
 
 describe("readHead", () => {
@@ -79,7 +85,35 @@ describe("publishEvent", () => {
       payload: PAYLOAD,
     });
     expect(value).not.toHaveProperty("prevEventCid");
-    expect(Number.isNaN(Date.parse(value.createdAt))).toBe(false);
+    expect(value.createdAt).toBe(CREATED_AT);
+  });
+
+  test("asks a createdAt function for the time, passing the seq", async () => {
+    const createdAt = (seq: number) => `2026-01-01T00:00:0${seq}.000Z`;
+    const input = { stream: "releases", kind: "release", payload: PAYLOAD };
+
+    await publishEvent(session, { ...input, kind: "release", createdAt });
+    const second = await publishEvent(session, {
+      ...input,
+      kind: "release",
+      createdAt,
+    });
+
+    expect(repo.event(second.rkey).value.createdAt).toBe(
+      "2026-01-01T00:00:02.000Z",
+    );
+  });
+
+  test("rejects a createdAt that is not a datetime", async () => {
+    await expect(
+      publishEvent(session, {
+        stream: "releases",
+        kind: "release",
+        payload: PAYLOAD,
+        createdAt: "yesterday",
+      }),
+    ).rejects.toThrow(ContractError);
+    expect(repo.calls).toEqual([]);
   });
 
   test("writes the event first, then the head", async () => {
@@ -125,6 +159,7 @@ describe("publishEvent", () => {
       kind: "correct",
       payload: PAYLOAD,
       refSeq: 1,
+      createdAt: CREATED_AT,
     });
 
     expect(repo.event(correction.rkey).value).toMatchObject({
@@ -143,6 +178,7 @@ describe("publishEvent", () => {
         stream: "releases",
         kind: "withdraw",
         payload: PAYLOAD,
+        createdAt: CREATED_AT,
       }),
     ).rejects.toThrow(ContractError);
     await expect(
@@ -150,6 +186,7 @@ describe("publishEvent", () => {
         stream: "releases",
         kind: "release",
         payload: { name: "pkg" } as never,
+        createdAt: CREATED_AT,
       }),
     ).rejects.toThrow(ContractError);
     expect(repo.calls).toEqual(before);

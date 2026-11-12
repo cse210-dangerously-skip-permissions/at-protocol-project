@@ -7,6 +7,7 @@ import {
   publishEvent,
   type Published,
   type PublisherSession,
+  readHead,
 } from "./publisher.js";
 import { makeWorkload, workloadCreatedAt } from "./workload.js";
 
@@ -16,16 +17,16 @@ Publish a deterministic workload of release events to the local PDS.
 
   --stream  Stream name, such as releases
   --count   How many events to publish
-  --seed    Workload seed. The same seed gives the same events
+  --seed    Workload seed. The same seed gives the same event at each seq
   --help    Show this text`;
 
 /** What `runPublish` needs to publish a workload. */
 export interface PublishArgs {
   /** Stream name, such as `releases`. */
   stream: string;
-  /** How many events to publish. */
+  /** How many more events to publish, continuing from the stream's head. */
   count: number;
-  /** Workload seed. The same seed gives the same events. */
+  /** Workload seed. The same seed gives the same event at each seq. */
   seed: number;
 }
 
@@ -38,11 +39,13 @@ export interface PublishOptions {
 }
 
 /**
- * Publish a seeded workload of release events, printing one line per event.
+ * Publish the next `count` events of a seeded workload, printing one line
+ * per event.
  *
- * The payloads and each `createdAt` come from the seed, so the same seed on
- * a fresh stream writes the same records and gets the same CIDs. On a stream
- * that already has events the seq and link differ, so the CIDs do too.
+ * The event at seq n depends only on the seed and n. Reading the head first,
+ * this continues the workload from wherever the stream is, so publishing 3
+ * and then 3 writes the same records, with the same CIDs, as publishing 6
+ * at once.
  *
  * @param args - Stream, count, and seed.
  * @param options - A session and a log function, when not using the defaults.
@@ -55,9 +58,15 @@ export async function runPublish(
   if (!isStreamName(args.stream)) {
     throw new RangeError(`bad stream name ${JSON.stringify(args.stream)}`);
   }
-  const payloads = makeWorkload(args.seed, args.count);
+  // Checks the seed and count before anything touches the network.
+  makeWorkload(args.seed, args.count);
   const log = options.log ?? ((line: string) => console.log(line));
   const session = options.session ?? (await login(loadLocalEnv()));
+
+  const head = await readHead(session, args.stream);
+  const start = head?.seq ?? 0;
+  // The payload at seq n is entry n - 1 of the workload, whatever the count.
+  const payloads = makeWorkload(args.seed, start + args.count).slice(start);
 
   const published: Published[] = [];
   for (const [index, payload] of payloads.entries()) {
@@ -65,8 +74,13 @@ export async function runPublish(
       stream: args.stream,
       kind: "release",
       payload,
-      createdAt: workloadCreatedAt(args.seed, index),
+      createdAt: (seq) => workloadCreatedAt(args.seed, seq),
     });
+    if (event.seq !== start + index + 1) {
+      throw new Error(
+        `${args.stream} moved while publishing: expected seq ${start + index + 1}, got ${event.seq}`,
+      );
+    }
     log(`published ${args.stream} seq=${event.seq} cid=${event.cid}`);
     published.push(event);
   }

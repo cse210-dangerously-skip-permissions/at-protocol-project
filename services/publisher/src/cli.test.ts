@@ -34,7 +34,7 @@ describe("runPublish", () => {
     expect(repo.head("releases").seq).toBe(5);
   });
 
-  test("the same seed on a fresh stream writes identical events", async () => {
+  test("the same seed writes identical events on two repos", async () => {
     const other = new FakeRepo();
     const args = { stream: "releases", count: 6, seed: 99 };
 
@@ -66,19 +66,79 @@ describe("runPublish", () => {
     expect(second[0]?.cid).not.toBe(first[0]?.cid);
   });
 
-  test("continues after the head on a stream that has events", async () => {
+  test("publishing 3 then 3 writes the same records and CIDs as publishing 6", async () => {
+    const batched = fakeSession(repo);
+    const other = new FakeRepo();
+
+    const firstHalf = await runPublish(
+      { stream: "releases", count: 3, seed: 1 },
+      { session: batched, log },
+    );
+    const secondHalf = await runPublish(
+      { stream: "releases", count: 3, seed: 1 },
+      { session: batched, log },
+    );
+    const atOnce = await runPublish(
+      { stream: "releases", count: 6, seed: 1 },
+      { session: fakeSession(other), log },
+    );
+
+    const split = [...firstHalf, ...secondHalf];
+    expect(split.map((event) => event.seq)).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(split.map((event) => event.cid)).toEqual(
+      atOnce.map((event) => event.cid),
+    );
+    for (const event of atOnce) {
+      expect(repo.event(event.rkey).value).toEqual(
+        other.event(event.rkey).value,
+      );
+    }
+    expect(repo.head("releases")).toEqual(other.head("releases"));
+  });
+
+  test("a second run continues the workload and time moves forward", async () => {
     const session = fakeSession(repo);
     await runPublish(
-      { stream: "releases", count: 2, seed: 1 },
+      { stream: "releases", count: 3, seed: 1 },
       { session, log },
     );
-
     const more = await runPublish(
-      { stream: "releases", count: 2, seed: 1 },
+      { stream: "releases", count: 3, seed: 1 },
       { session, log },
     );
 
-    expect(more.map((event) => event.seq)).toEqual([3, 4]);
+    const payloads = makeWorkload(1, 6);
+    const times: string[] = [];
+    for (let seq = 1; seq <= 6; seq += 1) {
+      const { value } = repo.event(`releases-${String(seq).padStart(12, "0")}`);
+      expect(value.payload).toEqual(payloads[seq - 1]);
+      times.push(value.createdAt);
+    }
+    expect(more.map((event) => event.seq)).toEqual([4, 5, 6]);
+    expect([...times].sort()).toEqual(times);
+    expect(new Set(times).size).toBe(6);
+  });
+
+  test("fails if the stream moves while it is publishing", async () => {
+    const session = fakeSession(repo);
+    const realPut = repo.putRecord;
+    let intruded = false;
+    // Another writer publishes one event right after this run's first.
+    repo.putRecord = async (params) => {
+      const result = await realPut(params);
+      if (!intruded) {
+        intruded = true;
+        await runPublish(
+          { stream: "releases", count: 1, seed: 2 },
+          { session: fakeSession(repo), log: () => {} },
+        );
+      }
+      return result;
+    };
+
+    await expect(
+      runPublish({ stream: "releases", count: 2, seed: 1 }, { session, log }),
+    ).rejects.toThrow(/moved while publishing/);
   });
 
   test("rejects a bad stream or count before writing", async () => {

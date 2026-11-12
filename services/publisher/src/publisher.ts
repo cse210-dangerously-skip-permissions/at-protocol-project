@@ -29,8 +29,12 @@ export interface PublishInput {
   payload: Payload;
   /** For `correct` and `withdraw`: the seq of the event this one refers to. */
   refSeq?: number;
-  /** ISO 8601 time for the event. Defaults to now. */
-  createdAt?: string;
+  /**
+   * ISO 8601 time for the event, or a function that gives it from the seq
+   * the event gets. Required, so no caller falls back to the clock without
+   * meaning to: runs that must repeat pass a time derived from the seq.
+   */
+  createdAt: string | ((seq: number) => string);
 }
 
 /** The result of publishing one event. */
@@ -128,7 +132,10 @@ export async function publishEvent(
       kind: input.kind,
       ...(input.refSeq === undefined ? {} : { refSeq: input.refSeq }),
       payload: input.payload,
-      createdAt: input.createdAt ?? new Date().toISOString(),
+      createdAt:
+        typeof input.createdAt === "function"
+          ? input.createdAt(seq)
+          : input.createdAt,
     },
     rkey,
   );

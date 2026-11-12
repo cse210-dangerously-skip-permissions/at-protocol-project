@@ -73,6 +73,7 @@ test("publishing 10 events yields seq 1 to 10 with valid links and a head at 10"
         stream,
         kind: "release",
         payload: { name: "pkg", version: `1.0.${i}`, checksum: `sha256:${i}` },
+        createdAt: new Date().toISOString(),
       }),
     );
   }
@@ -90,24 +91,28 @@ test("publishing 10 events yields seq 1 to 10 with valid links and a head at 10"
   expect(head).toMatchObject({ stream, seq: 10, eventCid: stored[9]?.cid });
 });
 
-test("the same seed on a fresh stream gets the same CIDs from the PDS", async () => {
+test("publishing 3 then 3 gets the same CIDs from the PDS as publishing 6", async () => {
   const stream = `seed${Date.now().toString(36)}`;
   const session = await login(env);
-  const args = { stream, count: 3, seed: 7 };
   const lines: string[] = [];
   const options = { session, log: (line: string) => lines.push(line) };
 
-  const first = await runPublish(args, options);
+  const split = [
+    ...(await runPublish({ stream, count: 3, seed: 7 }, options)),
+    ...(await runPublish({ stream, count: 3, seed: 7 }, options)),
+  ];
+  expect(split.map((event) => event.seq)).toEqual([1, 2, 3, 4, 5, 6]);
   expect(lines).toEqual(
-    first.map(
+    split.map(
       (event) => `published ${stream} seq=${event.seq} cid=${event.cid}`,
     ),
   );
 
-  // Make the stream fresh again by deleting its records. Real publishers
-  // never delete events; this throwaway stream exists only for this check.
+  // Empty the stream by deleting its records, so the same seqs can be
+  // published again. Real publishers never delete events; this throwaway
+  // stream exists only for this check.
   const repo = session.agent.com.atproto.repo;
-  for (const event of first) {
+  for (const event of split) {
     await repo.deleteRecord({
       repo: session.did,
       collection: EVENT_NSID,
@@ -121,9 +126,8 @@ test("the same seed on a fresh stream gets the same CIDs from the PDS", async ()
   });
   expect(await readHead(session, stream)).toBeNull();
 
-  const second = await runPublish(args, options);
-  expect(second.map((event) => event.seq)).toEqual([1, 2, 3]);
-  expect(second.map((event) => event.cid)).toEqual(
-    first.map((event) => event.cid),
+  const atOnce = await runPublish({ stream, count: 6, seed: 7 }, options);
+  expect(atOnce.map((event) => event.cid)).toEqual(
+    split.map((event) => event.cid),
   );
 });

@@ -76,16 +76,18 @@ export function makeWorkload(seed: number, count: number): Payload[] {
 }
 
 /**
- * The `createdAt` of one workload event. It comes from the seed and the
- * event's position, never from the clock, so two runs of a workload write
- * byte-identical records.
+ * The `createdAt` of the workload event at a seq. It comes from the seed and
+ * the seq, never from the clock, so the event at a seq is the same however
+ * the workload was split into runs, and time only moves forward on a stream.
  *
  * @param seed - The workload's seed.
- * @param index - Position of the event in the workload, from 0.
+ * @param seq - The event's seq in its stream, from 1.
  * @returns An ISO 8601 time.
  */
-export function workloadCreatedAt(seed: number, index: number): string {
-  assertCount("index", index);
+export function workloadCreatedAt(seed: number, seq: number): string {
+  if (!Number.isSafeInteger(seq) || seq < 1) {
+    throw new RangeError(`seq must be an integer >= 1, got ${seq}`);
+  }
   const day = (seed >>> 0) % 365;
-  return new Date(EPOCH_MS + day * DAY_MS + index * STEP_MS).toISOString();
+  return new Date(EPOCH_MS + day * DAY_MS + (seq - 1) * STEP_MS).toISOString();
 }
