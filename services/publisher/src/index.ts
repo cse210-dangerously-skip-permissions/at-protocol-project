@@ -8,3 +8,5 @@ export {
   type PublishInput,
   type Published,
 } from "./publisher.js";
+export { runPublish, type PublishArgs, type PublishOptions } from "./cli.js";
+export { makeWorkload, workloadCreatedAt } from "./workload.js";
