@@ -16,6 +16,7 @@
   "scripts": {
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
+    "docs": "typedoc",
     "stack:up": "node infra/scripts/stack.mjs up",
     "stack:check": "node infra/scripts/stack.mjs check",
     "stack:seed": "node infra/scripts/stack.mjs seed",
@@ -44,6 +45,7 @@
     "lint-staged": "^16.4.0",
     "prettier": "^3.9.10",
     "tsx": "^4.23.15",
+    "typedoc": "^0.28.20",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.72.2",
     "vitest": "^4.1.12"

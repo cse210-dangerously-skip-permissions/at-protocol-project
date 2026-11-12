@@ -1,0 +1,15 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "name": "AT Protocol Project API",
+  "entryPoints": [
+    "packages/*/src/index.ts",
+    "services/*/src/index.ts",
+    "tools/*/src/index.ts"
+  ],
+  "tsconfig": "tsconfig.json",
+  "out": "dist/docs",
+  "readme": "none",
+  "excludePrivate": true,
+  "excludeInternal": true,
+  "treatWarningsAsErrors": true
+}

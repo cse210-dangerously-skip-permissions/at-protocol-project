@@ -14,6 +14,7 @@ To run the local AT network (a PDS and a PLC directory in Docker), run `npm run 
 | `npm run test:coverage` | Unit tests plus the coverage baseline check                          |
 | `npm run lint`          | ESLint across every package                                          |
 | `npm run typecheck`     | `tsc` in strict mode, whole repo                                     |
+| `npm run docs`          | Builds API docs in `dist/docs/`                                      |
 | `npm run format:check`  | Prettier check only                                                  |
 | `npm run format`        | Prettier, writing fixes                                              |
 
@@ -35,6 +36,10 @@ This is an npm workspaces monorepo. Each package's README names the team that ow
 | `infra/`             | Docker Compose and scripts for the local AT network |
 
 Import shared packages by name, such as `@trustlab/contracts`. Services must not import each other's internals.
+
+## API documentation
+
+The [API reference](https://cse210-dangerously-skip-permissions.github.io/at-protocol-project/) documents exported types and functions across packages, services, and tools (available after the first Pages deployment).
 
 ## Decisions
 
