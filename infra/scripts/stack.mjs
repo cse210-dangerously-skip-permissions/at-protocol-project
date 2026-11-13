@@ -119,14 +119,14 @@ function compose(args) {
 
 /**
  * Whether a Node.js version can run these scripts. The checks use Node's
- * built-in WebSocket, and the repo needs 22.5 or newer anyway.
+ * built-in WebSocket, and the repo needs 22.19 or newer anyway.
  *
- * @param {string} version - A version such as "22.5.0", as in process.versions.node.
- * @returns {boolean} True for 22.5 or newer.
+ * @param {string} version - A version such as "22.19.0", as in process.versions.node.
+ * @returns {boolean} True for 22.19 or newer.
  */
 export function isSupportedNode(version) {
   const [major, minor] = version.split(".").map(Number);
-  return major > 22 || (major === 22 && minor >= 5);
+  return major > 22 || (major === 22 && minor >= 19);
 }
 
 /**
@@ -139,7 +139,7 @@ async function main(name) {
   const commands = { up, check, seed, down, reset, logs };
   if (!isSupportedNode(process.versions.node)) {
     console.error(
-      `The stack scripts need Node.js 22.5 or newer, like the rest of the repo. This is Node ${process.version}.`,
+      `The stack scripts need Node.js 22.19 or newer, like the rest of the repo. This is Node ${process.version}.`,
     );
     return 1;
   }

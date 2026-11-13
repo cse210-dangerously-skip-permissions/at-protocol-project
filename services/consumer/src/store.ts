@@ -155,12 +155,9 @@ export class ConsumerStore {
    * @returns The feed cursor and the last rev per DID.
    */
   getCheckpoint(): ConsumerCheckpoint {
-    // `all()` rather than `get()`: on Node 22.5 `get()` returns a row of
-    // nulls instead of `undefined` when nothing matches.
-    const cursorRows = this.#db
+    const cursorRow = this.#db
       .prepare("SELECT cursor FROM feed_cursor WHERE id = 1")
-      .all() as unknown as { cursor: number }[];
-    const cursorRow = cursorRows[0];
+      .get() as { cursor: number } | undefined;
     const revRows = this.#db
       .prepare("SELECT did, rev FROM repo_revs ORDER BY did")
       .all() as unknown as { did: string; rev: string }[];
@@ -214,12 +211,8 @@ export class ConsumerStore {
 
     for (const commitEvent of commit.events) {
       const event: StoredEvent = { ...commitEvent, did: commit.did };
-      const matches = findCid.all(
-        event.did,
-        event.stream,
-        event.seq,
-      ) as unknown as { cid: string }[];
-      const stored = matches[0];
+      const stored = findCid.get(event.did, event.stream, event.seq) as
+        { cid: string } | undefined;
       if (stored === undefined) {
         insertEvent.run(
           event.did,

@@ -8,7 +8,7 @@ The workflow rules below (branching, PRs, reviews, titles) apply from day one. T
 
 ## Setup
 
-- Use Node.js 22.5 or newer (`node -v` to check).
+- Use Node.js 22.19 or newer (`node -v` to check).
 - Run `npm install` once package.json exists. The tooling setup adds a pre-commit hook that formats the files you commit.
 - Run `npx playwright install chromium` once, so `npm run test:e2e` has a browser.
 
