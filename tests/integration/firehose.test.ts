@@ -108,4 +108,11 @@ test("saves verified events from the allowlisted publisher and drops other DIDs"
     { timeout: 10_000 },
   );
   log.mockRestore();
+
+  // Leave the witness repo clean for the real witness service.
+  await witness.com.atproto.repo.deleteRecord({
+    repo: env.WITNESS_DID,
+    collection: EVENT_NSID,
+    rkey: eventRkey(stream, 1),
+  });
 });

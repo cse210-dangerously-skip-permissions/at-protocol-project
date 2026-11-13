@@ -1,4 +1,4 @@
-import { IdResolver } from "@atproto/identity";
+import { IdResolver, MemoryCache } from "@atproto/identity";
 import { type CommitEvt, type Event, Firehose } from "@atproto/sync";
 import {
   EVENT_NSID,
@@ -53,9 +53,12 @@ export function startFirehose(opts: FirehoseOptions): RunningFirehose {
     // (SSRF protection), which is exactly where the local PLC lives.
     // ponytail: plain fetch is fine on the local network; a consumer that
     // resolves DIDs on the public network (REC-4) should keep the safe default.
+    // The cache saves a PLC request per commit. A stale key still works: the
+    // library refetches it when verification fails.
     idResolver: new IdResolver({
       plcUrl: env.PLC_URL,
       fetch: globalThis.fetch,
+      didCache: new MemoryCache(),
     }),
     filterCollections: [EVENT_NSID, HEAD_NSID],
     // `.test` handles don't resolve through DNS; we only need commits.
