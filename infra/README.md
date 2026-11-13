@@ -102,3 +102,5 @@ There is no relay, AppView, or second PDS, so nothing is federated. Consumers re
 - **Port already in use:** another program holds 2582 or 2583. Stop it, or run `npm run stack:down` if an old copy of the stack is still running.
 - **`docker` not found, or cannot connect to the Docker daemon:** start Docker Desktop, or on Linux start the Docker service and make sure your user can run `docker`.
 - **A check fails:** run `npm run stack:logs` to see what the PDS or PLC reported, or `npm run stack:reset` and then `npm run stack:up` for a clean start.
+
+AI agents: read [AGENTS.md](../AGENTS.md) first.
