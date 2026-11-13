@@ -7,6 +7,8 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
+    "@atproto/identity": "^0.5.23",
+    "@atproto/sync": "^0.4.25",
     "@trustlab/contracts": "*"
   }
 }
