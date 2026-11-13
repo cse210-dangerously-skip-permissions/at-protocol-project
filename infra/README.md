@@ -20,7 +20,7 @@ The PLC directory also uses a Postgres container that is not published on any po
 ### What you need
 
 - Docker with Compose: Docker Desktop on macOS or Windows, or Docker Engine with the Compose plugin on Linux
-- Node.js 22.5 or newer, as for the rest of the repo
+- Node.js 22.19 or newer, as for the rest of the repo
 - Ports 2582 and 2583 free
 
 ### Commands

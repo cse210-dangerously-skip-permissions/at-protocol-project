@@ -35,7 +35,7 @@ npm run test:integration  # tests/integration/, needs stack:up
 npm run docs              # TypeDoc; warnings are errors
 ```
 
-CI runs only `typecheck` and `docs` today, so lint and tests are on you. The pre-commit hook runs Prettier.
+CI runs `lint`, `format:check`, `typecheck`, `test:coverage`, and `docs` on every PR. It doesn't run integration tests, so run those yourself when you touch AT code. The pre-commit hook runs Prettier.
 
 ## Tests
 
@@ -45,7 +45,7 @@ CI runs only `typecheck` and `docs` today, so lint and tests are on you. The pre
 
 ## Rules
 
-- **No contract edits without an issue.** `lexicons/` and `packages/contracts` need a review from every team that uses them (CODEOWNERS enforces this).
+- **No contract edits without an issue.** `lexicons/` and `packages/contracts` need a review from every team that uses them. CODEOWNERS requests those reviews but one approval can merge, so make sure each team has reviewed.
 - **Services talk only through AT or `packages/contracts`.** Never import another package's `src/`.
 - **Validate network input at runtime.** Records from the firehose, `getRepo`, `getRecord`, or the witness API are `unknown` until a `parse*` from `@trustlab/contracts` checks them.
 - **Never disable type checks:** no `@ts-ignore`, no `any` to silence an error, no loosening `tsconfig.json` or lint rules.
