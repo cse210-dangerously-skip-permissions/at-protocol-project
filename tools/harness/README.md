@@ -4,5 +4,3 @@ Experiment harness: runs named scenarios and writes results.
 
 - **Team:** Trust
 - **System:** Auditor & Test Harness (AUD)
-
-AI agents: read [AGENTS.md](../../AGENTS.md) first.

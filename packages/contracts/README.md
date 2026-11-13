@@ -40,5 +40,3 @@ The validators check one record's shape. Whether a chain of events is valid, or 
 A change here changes the contract for every team, so it needs a review from each team that uses it. Keep network, database, and service code out: only types, constants, pure helpers, and validators belong here.
 
 The interfaces in `src/types.ts` are written by hand to match the Lexicons. Generating them from `lexicons/` is the second half of CTR-2 (#30).
-
-AI agents: read [AGENTS.md](../../AGENTS.md) first.

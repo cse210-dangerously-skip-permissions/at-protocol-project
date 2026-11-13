@@ -46,5 +46,3 @@ The namespace `dev.trustlab` stands for the domain `trustlab.dev`, which this te
 ## Changing a Lexicon
 
 A change here changes the contract for every team. It needs a review from each team that reads these records, and after the Sprint 2 contract freeze it also needs its own issue.
-
-AI agents: read [AGENTS.md](../AGENTS.md) first.

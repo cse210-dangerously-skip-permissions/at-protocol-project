@@ -30,5 +30,3 @@ The event at seq n depends only on the seed and n: its payload is entry n of the
 `publishEvent` has no default for `createdAt`. Every caller passes a time, or a function from the seq to a time, so nothing falls back to the clock by accident. Anything the harness compares across runs should pass `workloadCreatedAt(seed, seq)`.
 
 The integration test is `tests/integration/publisher.test.ts`. Run it with `npm run stack:up`, then `npm run test:integration`.
-
-AI agents: read [AGENTS.md](../../AGENTS.md) first.

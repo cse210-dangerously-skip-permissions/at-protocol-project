@@ -12,5 +12,3 @@ Verified firehose subscription, DID allowlist, view, and checkpoint.
 `StoredEvent` and `ConsumerCheckpoint` come from `@trustlab/contracts`.
 
 On Node 22.5 to 22.12, run with `--experimental-sqlite`. `npm test` sets it for you.
-
-AI agents: read [AGENTS.md](../../AGENTS.md) first.
