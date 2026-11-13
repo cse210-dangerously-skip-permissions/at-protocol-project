@@ -51,3 +51,26 @@ Run on 2026-11-17 against the local stack (PDS 0.4.5051), with `@atproto/repo` 0
 
 6. **The fallback is the path to use.** `Firehose` silently drops an op whose proof fails (#41, #124), so a witness built on it could miss a checkpoint without knowing. Raw frames from `Subscription` include every head commit, so the witness can verify each one with `verifyCheckpoint` and count the failures. ADR-002 already says the witness must not capture through `sync`.
 7. **Which key to trust is the caller's decision.** `verifyCheckpoint` checks against the stored `signingKey`. ADR-003 rule 3 trusts the DID document's key, so the auditor (#80) calls `verifyCheckpoint({ ...cp, signingKey: keyFromDidDocument })`. After a key rotation that fails, and the verdict is `unknown` (#96).
+
+## `sync-fields.ts`: what `@atproto/sync` exposes (#41, CNS-4)
+
+```
+npm run stack:up
+npx tsx tools/harness/spikes/sync-fields.ts
+```
+
+It writes three commits to a fresh spike stream on the seeded publisher, then deletes it: event 1 and its head in one `applyWrites` commit, event 2 and a head update in one commit, and a delete of all three records. For each commit it prints what `Firehose` passes to `handleEvent`, what the raw `subscribeRepos` frame carries, and whether `verifyProofs` confirms the head record from that commit's blocks.
+
+### Findings
+
+Run on 2026-11-13 and 2026-11-15 with `@atproto/sync` 0.4.25 (the version the consumer uses) and 0.4.26, `@atproto/repo` 0.11.5, and the stack's PDS 0.4.5051. Both versions gave the same results.
+
+1. **`Firehose` emits one event per operation, not per commit.** A commit with an event and a head arrives as two `CommitEvt`s. Both carry the commit CID, `rev`, firehose `seq`, and the same `blocks` object. A consumer that applies a commit atomically must group by `commit` itself.
+2. **Each event carries the commit CID, `rev`, and the commit's blocks.** `blocks` is a parsed `BlockMap`: the signed commit, the MST nodes on the changed paths, and the new record blocks. For an event plus a head in a nearly empty repo that was 5 to 7 blocks and 0.7 to 0.95 KB (1.0 to 1.25 KB as a CAR), and it grew between two runs as the repo got bigger, since MST paths get longer.
+3. **The blocks alone verify the head.** `verifyProofs(car, [{ collection, rkey, cid }], did, key)` confirmed the head record's CID on every commit, with the key from `IdResolver.did.resolveAtprotoKey` on the local PLC. A claim with the wrong CID comes back in `unverified` rather than throwing. A delete is proven with `cid: null`.
+4. **`verifyProofs` takes CAR bytes, not a `BlockMap`.** From a `Firehose` event, rebuild them with `blocksToCarFile(evt.commit, evt.blocks)`. The rebuilt CAR was byte-for-byte the same size as the raw frame's `blocks` in every commit, and verified the same way.
+5. **Not exposed by `CommitEvt`: `since`, `prevData`, and each op's `prev`.** The local PDS does send them: every raw `#commit` frame had `since` and `prevData`, and updates and deletes had `ops[].prev`. To keep them, read the raw frame with `Subscription` from `@atproto/xrpc-server`.
+6. **A delete has no `cid` and no `record`.** Its other fields match a create. The raw op has `cid: null` and `prev` set to the deleted record's CID.
+7. **No `#sync` event appeared.** Ordinary writes never produce one. Its type in 0.4.26 is `{ seq, time, event: "sync", did, cid, rev, blocks }`, with `blocks` holding just the signed commit.
+8. **`Firehose` verifies every commit and silently drops ops that fail.** It checks the ops with `verifyProofs` against the PLC key, retries once with a fresh key, and skips an op whose CID does not match. A consumer sees fewer events, not an error.
+9. **The event and the head can be one commit (#63).** `cidForRecord` from `@atproto/repo` gave the same event CID the PDS returned, so the head can name it before the write, in the same `applyWrites` call.
