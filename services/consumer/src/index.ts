@@ -5,7 +5,11 @@ export {
   makeAllowlist,
   type Allowlist,
 } from "./allowlist.js";
-
+export {
+  type FirehoseOptions,
+  type RunningFirehose,
+  startFirehose,
+} from "./firehose.js";
 export {
   ConsumerStore,
   EventConflictError,
