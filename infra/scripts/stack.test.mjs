@@ -3,10 +3,11 @@ import { isSupportedNode } from "./stack.mjs";
 
 describe("isSupportedNode", () => {
   test.each([
-    ["22.5.0", true],
+    ["22.19.0", true],
     ["22.23.4", true],
     ["24.1.0", true],
-    ["22.4.1", false],
+    ["22.18.0", false],
+    ["22.5.0", false],
     ["20.20.2", false],
     ["18.19.1", false],
   ])("Node %s supported: %s", (version, supported) => {
