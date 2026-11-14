@@ -40,7 +40,7 @@ npm run docs           # TypeDoc API site in dist/docs
 npm test               # unit tests
 npm run test:coverage  # unit tests + coverage baseline check
 npm run test:integration  # integration tests; needs `npm run stack:up` first
-npm run test:e2e       # Playwright browser tests
+npm run test:e2e       # Playwright story specs; ones that need `npm run stack:up` skip without it
 npm run format:check   # Prettier check only
 ```
 
