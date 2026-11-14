@@ -4,3 +4,5 @@
 
 - **Team:** Pipeline
 - **System:** Recovery (REC)
+
+AI agents: read [AGENTS.md](../../AGENTS.md) first.

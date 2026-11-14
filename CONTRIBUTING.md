@@ -8,7 +8,7 @@ The workflow rules below (branching, PRs, reviews, titles) apply from day one. T
 
 ## Setup
 
-- Use Node.js 22.5 or newer (`node -v` to check).
+- Use Node.js 22.19 or newer (`node -v` to check).
 - Run `npm install` once package.json exists. The tooling setup adds a pre-commit hook that formats the files you commit.
 - Run `npx playwright install chromium` once, so `npm run test:e2e` has a browser.
 
@@ -39,6 +39,7 @@ npm run typecheck      # TypeScript type check (tsc)
 npm run docs           # TypeDoc API site in dist/docs
 npm test               # unit tests
 npm run test:coverage  # unit tests + coverage baseline check
+npm run test:integration  # integration tests; needs `npm run stack:up` first
 npm run test:e2e       # Playwright browser tests
 npm run format:check   # Prettier check only
 ```

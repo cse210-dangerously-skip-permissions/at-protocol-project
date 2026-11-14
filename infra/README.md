@@ -20,7 +20,7 @@ The PLC directory also uses a Postgres container that is not published on any po
 ### What you need
 
 - Docker with Compose: Docker Desktop on macOS or Windows, or Docker Engine with the Compose plugin on Linux
-- Node.js 22.5 or newer, as for the rest of the repo
+- Node.js 22.19 or newer, as for the rest of the repo
 - Ports 2582 and 2583 free
 
 ### Commands
@@ -102,3 +102,5 @@ There is no relay, AppView, or second PDS, so nothing is federated. Consumers re
 - **Port already in use:** another program holds 2582 or 2583. Stop it, or run `npm run stack:down` if an old copy of the stack is still running.
 - **`docker` not found, or cannot connect to the Docker daemon:** start Docker Desktop, or on Linux start the Docker service and make sure your user can run `docker`.
 - **A check fails:** run `npm run stack:logs` to see what the PDS or PLC reported, or `npm run stack:reset` and then `npm run stack:up` for a clean start.
+
+AI agents: read [AGENTS.md](../AGENTS.md) first.
