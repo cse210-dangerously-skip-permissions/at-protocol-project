@@ -2,6 +2,7 @@ import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { isStreamName, loadLocalEnv } from "@trustlab/contracts";
+import { amendMain, isAmendKind } from "./amend.js";
 import {
   login,
   publishEvent,
@@ -9,6 +10,7 @@ import {
   type PublisherSession,
   readHead,
 } from "./publisher.js";
+import { integerOption } from "./args.js";
 import { makeWorkload, workloadCreatedAt } from "./workload.js";
 
 const USAGE = `Usage: publish --stream <name> --count <n> --seed <n>
@@ -18,7 +20,9 @@ Publish a deterministic workload of release events to the local PDS.
   --stream  Stream name, such as releases
   --count   How many events to publish
   --seed    Workload seed. The same seed gives the same event at each seq
-  --help    Show this text`;
+  --help    Show this text
+
+To amend an earlier event, run correct --help or withdraw --help.`;
 
 /** What `runPublish` needs to publish a workload. */
 export interface PublishArgs {
@@ -88,20 +92,6 @@ export async function runPublish(
 }
 
 /**
- * Read a whole-number option.
- *
- * @param name - Option name, for the error message.
- * @param value - The raw text, if the option was given.
- * @returns The number.
- */
-function integerOption(name: string, value: string | undefined): number {
-  if (value === undefined || !/^-?\d+$/.test(value)) {
-    throw new RangeError(`--${name} needs a whole number`);
-  }
-  return Number(value);
-}
-
-/**
  * Parse `publish` command-line arguments.
  *
  * @param argv - The arguments after the command name.
@@ -130,9 +120,10 @@ export function parsePublishArgs(argv: readonly string[]): PublishArgs | null {
 }
 
 /**
- * Run the `publish` command.
+ * Run the publisher CLI: `publish` by default, or `correct` or `withdraw`
+ * when that is the first argument.
  *
- * @param argv - The arguments after the command name.
+ * @param argv - The command-line arguments.
  * @param options - A session and a log function, when not using the defaults.
  * @returns The exit code: 0 on success, 2 for bad arguments, 1 otherwise.
  */
@@ -140,6 +131,9 @@ export async function main(
   argv: readonly string[],
   options: PublishOptions = {},
 ): Promise<number> {
+  const [command, ...rest] = argv;
+  if (isAmendKind(command)) return amendMain(command, rest, options);
+
   const log = options.log ?? ((line: string) => console.log(line));
   let args: PublishArgs | null;
   try {
