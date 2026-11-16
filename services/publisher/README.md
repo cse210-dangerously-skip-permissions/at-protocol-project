@@ -11,11 +11,17 @@ Publishes events and stream heads to the PDS.
 
 - `login(env)` logs in to the PDS as the seeded publisher from `.env.local`.
 - `readHead(session, stream)` returns the stream's head record, or `null` for a new stream.
-- `publishEvent(session, input)` writes the next event with its `prevEventCid`, then moves the head to it.
+- `publishEvent(session, input)` writes the next event with its `prevEventCid` and moves the head to it, in one commit.
 
 Both records are checked with the `@trustlab/contracts` validators before they are sent, because the PDS does not know our Lexicons.
 
-The event and the head are two separate writes for now. If the process dies between them, the head stays one behind. #63 makes them atomic. Do not publish to one stream from two places at once.
+The event and the head go in one `com.atproto.repo.applyWrites` call, so one commit carries both and the head is never behind its event. The call sets `swapCommit` to the repo's latest commit, read just before. If another commit landed first the PDS answers `InvalidSwap`, and `publishEvent` waits a short random time, reads again, and retries, up to 10 attempts before it throws `PublishConflictError`. Two publishers on one stream therefore never reuse or skip a seq.
+
+The head names the event's CID, so the CID is computed locally with `cidForRecord` from `@atproto/repo` before the write and checked against what the PDS returns.
+
+If the request fails for any other reason, the response may have been lost after the commit. `publishEvent` reads the head again, and if it is already at this seq with this event's CID it returns instead of publishing twice. In that one case `commitCid` and `rev` are the repo's latest commit at the re-read, which is a later one if another write landed in between.
+
+`swapCommit` guards the whole repo, not one stream, so any other write to the account also causes a retry.
 
 ## The `publish` command
 

@@ -6,7 +6,7 @@ import {
   HEAD_NSID,
   type HeadRecord,
 } from "@trustlab/contracts";
-import type { PublisherSession } from "./publisher.js";
+import { type PublisherSession, recordCid } from "./publisher.js";
 
 // Test support: an in-memory repo, so publisher tests need no PDS.
 
@@ -27,21 +27,38 @@ export function cidOf(text: string): string {
   return out;
 }
 
-interface WriteParams {
+interface RecordParams {
   repo: string;
   collection: string;
   rkey: string;
-  record: Record<string, unknown>;
 }
 
-/** An in-memory stand-in for the three repo calls the publisher makes. */
+interface BatchWrite {
+  $type: string;
+  collection: string;
+  rkey: string;
+  value: Record<string, unknown>;
+}
+
+interface BatchParams {
+  repo: string;
+  swapCommit?: string;
+  writes: BatchWrite[];
+}
+
+/** An in-memory stand-in for the repo and sync calls the publisher makes. */
 export class FakeRepo {
   readonly records = new Map<string, { cid: string; value: unknown }>();
   readonly calls: string[] = [];
   returnCommit = true;
   #rev = 0;
 
-  getRecord = async (params: Omit<WriteParams, "record">) => {
+  /** CID of the latest commit. A repo starts with one, as an account does. */
+  get commitCid(): string {
+    return cidOf(`commit-${this.#rev}`);
+  }
+
+  getRecord = async (params: RecordParams) => {
     const stored = this.records.get(`${params.collection}/${params.rkey}`);
     if (stored === undefined) {
       throw new XRPCError(400, "RecordNotFound", "Could not locate record");
@@ -49,32 +66,47 @@ export class FakeRepo {
     return { data: { uri: "at://x", cid: stored.cid, value: stored.value } };
   };
 
-  createRecord = async (params: WriteParams) => {
-    const key = `${params.collection}/${params.rkey}`;
-    if (this.records.has(key)) {
-      throw new XRPCError(400, "InvalidRequest", "Record already exists");
+  getLatestCommit = async () => ({
+    data: { cid: this.commitCid, rev: `rev-${this.#rev}` },
+  });
+
+  /** All writes land in one commit, or none do. */
+  applyWrites = async (params: BatchParams) => {
+    const cids = await Promise.all(
+      params.writes.map((write) => recordCid(write.value)),
+    );
+    // No await from here on: the check and the commit are one step, as on
+    // the PDS.
+    if (
+      params.swapCommit !== undefined &&
+      params.swapCommit !== this.commitCid
+    ) {
+      throw new XRPCError(400, "InvalidSwap", "Commit was at another CID");
     }
-    return this.#write("create", params);
-  };
+    for (const write of params.writes) {
+      const exists = this.records.has(`${write.collection}/${write.rkey}`);
+      if (write.$type.endsWith("#create") && exists) {
+        throw new XRPCError(400, "InvalidRequest", "Record already exists");
+      }
+      if (write.$type.endsWith("#update") && !exists) {
+        throw new XRPCError(400, "InvalidRequest", "Record does not exist");
+      }
+    }
 
-  putRecord = async (params: WriteParams) => this.#write("put", params);
-
-  #write(kind: string, params: WriteParams) {
-    this.calls.push(`${kind} ${params.collection}/${params.rkey}`);
-    const cid = cidOf(JSON.stringify(params.record));
-    this.records.set(`${params.collection}/${params.rkey}`, {
-      cid,
-      value: params.record,
+    const results = params.writes.map((write, index) => {
+      const kind = write.$type.split("#")[1] as string;
+      const cid = cids[index] as string;
+      this.calls.push(`${kind} ${write.collection}/${write.rkey}`);
+      this.records.set(`${write.collection}/${write.rkey}`, {
+        cid,
+        value: write.value,
+      });
+      return { $type: `${write.$type}Result`, uri: "at://x", cid };
     });
     this.#rev += 1;
-    const commit = {
-      cid: cidOf(`commit-${this.#rev}`),
-      rev: `rev-${this.#rev}`,
-    };
-    return {
-      data: { uri: "at://x", cid, ...(this.returnCommit ? { commit } : {}) },
-    };
-  }
+    const commit = { cid: this.commitCid, rev: `rev-${this.#rev}` };
+    return { data: { results, ...(this.returnCommit ? { commit } : {}) } };
+  };
 
   event(rkey: string): { cid: string; value: EventRecord } {
     return this.records.get(`${EVENT_NSID}/${rkey}`) as {
@@ -99,5 +131,9 @@ export function fakeSession(
   repo: FakeRepo,
   did = "did:plc:publisher",
 ): PublisherSession {
-  return { did, agent: { com: { atproto: { repo } } } as unknown as AtpAgent };
+  const sync = { getLatestCommit: repo.getLatestCommit };
+  return {
+    did,
+    agent: { com: { atproto: { repo, sync } } } as unknown as AtpAgent,
+  };
 }
