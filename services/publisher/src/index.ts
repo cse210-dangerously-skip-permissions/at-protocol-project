@@ -19,3 +19,11 @@ export {
   type AmendKind,
   type AmendOptions,
 } from "./amend.js";
+export {
+  runTamper,
+  tamperEdit,
+  tamperRewrite,
+  tamperTruncate,
+  type TamperArgs,
+  type TamperOptions,
+} from "./tamper.js";

@@ -40,6 +40,22 @@ Both append a new event of kind `withdraw` or `correct` with `refSeq` set to `--
 
 A `--seq` the stream does not have is rejected before anything is written. `src/amend.ts` holds `amendEvent` and `runAmend` for the harness and `trustlab` (#59).
 
+## Tamper tools
+
+```
+npm run publish-events -- tamper edit --stream releases --seq 2
+npm run publish-events -- tamper rewrite --stream releases --from 3
+npm run publish-events -- tamper truncate --stream releases --to 3
+```
+
+`src/tamper.ts` breaks the contract on purpose, for experiments. Each tool uses plain `putRecord` and `deleteRecord` calls. These are legal writes by the account owner, so the PDS accepts them and only the chain and the witness can catch them.
+
+- `tamperEdit(session, stream, seq)` changes one event's payload in place. The event gets a new CID and the next event's `prevEventCid` no longer matches.
+- `tamperRewrite(session, stream, from)` rewrites every event from `from` to the head with a changed payload and a link to the rewritten event before it, then moves the head. The chain is valid on its own; only the CIDs differ from what was published before.
+- `tamperTruncate(session, stream, to)` deletes the events after `to` and moves the head back to `to`.
+
+Never run these against a stream you want to keep.
+
 The integration test is `tests/integration/publisher.test.ts`. Run it with `npm run stack:up`, then `npm run test:integration`.
 
 AI agents: read [AGENTS.md](../../AGENTS.md) first.
