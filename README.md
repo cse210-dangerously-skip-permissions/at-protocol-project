@@ -39,24 +39,41 @@ Wrote .../.env.local.
 
 ### Troubleshooting
 
-**Docker isn't running.** `stack:up` prints `Cannot connect to the Docker daemon` or `failed to connect to the docker API`, then `The stack did not become healthy`. Ignore its hint to read `stack:logs`, which needs Docker too. Start Docker Desktop or OrbStack (on Linux, the Docker service), wait until `docker info` succeeds, and run `npm run stack:up` again. If it says `Docker is not installed or not on your PATH`, install it first.
+#### `Cannot connect to the Docker daemon` or `failed to connect to the docker API`
 
-**A port is already in use.** Something else is listening on 2582 or 2583, often a copy of the stack started from another clone. Depending on your Docker, this shows up in one of two ways:
+Start Docker Desktop or OrbStack (on Linux, the Docker service). When `docker info` succeeds, run `npm run stack:up` again. Skip the suggested `stack:logs`: it needs Docker too.
 
-- Compose fails with `port is already allocated` or `address already in use`.
-- The containers start, but a check fails with `HTTP 404 from http://localhost:2583/xrpc/_health` (another program answered) or `could not connect to http://localhost:2583`. We saw this with OrbStack.
+#### `Docker is not installed or not on your PATH`
 
-To see what holds the port, run `lsof -nP -iTCP:2583 -sTCP:LISTEN` on macOS or Linux, or `netstat -ano | findstr :2583` on Windows. Stop that program, then run `npm run stack:down` and `npm run stack:up`. The `down` matters: a container started while the port was taken keeps a broken port mapping until it is recreated.
+Install Docker (see "You need" above), then run `npm run stack:up`.
 
-**Node is older than 22.19.** `stack:up` stops with `The stack scripts need Node.js 22.19 or newer`, and `npm install` warns `EBADENGINE`. `.nvmrc` only says `22`, so `nvm use` can pick an older 22.x you already have. Run `nvm install` to get the newest 22, check `node -v`, then run `npm install` again.
+#### `port is already allocated`, `address already in use`, `HTTP 404 from http://localhost:2583/xrpc/_health`, or `could not connect to http://localhost:2583`
 
-**The first `stack:up` sits for minutes.** The first run downloads the PDS and Postgres images and builds the PLC server from source, which can take several minutes. `stack:up` waits up to 15 minutes, so let it finish. Later starts take seconds. If the build fails on a network error, run `npm run stack:up` again.
+Another program is using port 2582 or 2583.
 
-**`infra/.env` was deleted.** This one fails silently. `stack:up` makes new PDS secrets, every check passes, and the seed accounts still log in, but the PDS no longer holds the key that controls their DIDs: any PLC update for them fails with `Invalid signature on op`. Run `npm run stack:reset`, then `npm run stack:up`. Reset deletes all accounts and records, so the seed accounts get new DIDs and `.env.local` is rewritten. Do the same if you lose `.env.local`, since the passwords in it can't be recovered.
+1. Find it: `lsof -nP -iTCP:2583 -sTCP:LISTEN` on macOS or Linux, `netstat -ano | findstr :2583` on Windows. Do the same for 2582.
+2. Stop that program. If it is the stack from another clone, run `npm run stack:down` there.
+3. Run `npm run stack:down`, then `npm run stack:up`.
 
-**Two clones share one stack.** The containers and volumes are named `trustlab`, whichever folder you run from. `stack:reset` in one clone deletes the other clone's data, and the other clone's `infra/.env` no longer matches. Keep one clone running the stack, or reset when you switch.
+#### `The stack scripts need Node.js 22.19 or newer`, or `npm install` warns `EBADENGINE`
 
-**Something else fails.** Run `npm run stack:logs` to see what the PDS or PLC reported. `npm run stack:reset` and then `npm run stack:up` gives a clean start.
+Run `nvm install` (or install Node 22.19+ another way), check `node -v`, then run `npm install` again.
+
+#### The first `stack:up` sits for several minutes
+
+This is normal: it downloads images and builds the PLC server. Let it run; it waits up to 15 minutes. If the build stops on a network error, run `npm run stack:up` again.
+
+#### You deleted or lost `infra/.env` or `.env.local`
+
+Run `npm run stack:reset`, then `npm run stack:up`. Do this even if `stack:up` still passes: without the original `infra/.env`, updating the seed accounts' DIDs fails with `Invalid signature on op`. Reset deletes all accounts and records, so the seed accounts get new DIDs.
+
+#### You have two clones of the repo
+
+They share one stack. Run the stack from one clone only, or run `npm run stack:reset` when you switch.
+
+#### Anything else
+
+Run `npm run stack:logs` to see what the PDS or PLC reported. For a clean start, run `npm run stack:reset`, then `npm run stack:up`.
 
 ## Commands
 
