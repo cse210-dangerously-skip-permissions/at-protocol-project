@@ -19,6 +19,7 @@
     "packages/*/src",
     "services/*/src",
     "tools/*/src",
+    "tools/*/spikes",
     "tests",
     "e2e",
     "playwright.config.ts",

@@ -15,7 +15,7 @@ npm workspaces. Import other packages as `@trustlab/<name>` through their `src/i
 | `services/publisher` | Pipeline   | `login`, `publishEvent`, `readHead`, seeded `publish` command |
 | `services/consumer`  | Pipeline   | `ConsumerStore` (SQLite view + checkpoint); firehose in #117  |
 | `infra/`             | Foundation | Local PDS + PLC in Docker; seeds `.env.local`                 |
-| `packages/auditor`   | Trust      | Stub                                                          |
+| `packages/auditor`   | Trust      | `verifyCheckpoint`: offline check of a witness checkpoint     |
 | `packages/recovery`  | Pipeline   | Stub                                                          |
 | `services/witness`   | Trust      | Stub                                                          |
 | `tools/cli`          | Foundation | Stub                                                          |
