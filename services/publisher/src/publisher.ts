@@ -1,4 +1,5 @@
 import { AtpAgent, XRPCError } from "@atproto/api";
+import { cidForRecord } from "@atproto/repo";
 import {
   EVENT_NSID,
   type EventKind,
@@ -99,70 +100,176 @@ export async function readHead(
   }
 }
 
+/** How many times `publishEvent` tries before giving up on a busy repo. */
+const MAX_ATTEMPTS = 10;
+
 /**
- * Publish the next event on a stream, then move the head to it.
+ * Wait a random time before retrying, longer after each lost attempt.
  *
- * Reads the head, writes the event at the next seq with a link to the
- * previous event, then writes the head. Both records are checked against the
- * contract before they are sent, since the PDS does not know our Lexicons.
+ * Without this a writer that publishes back to back wins every race, since
+ * the loser's read and write always span one of the winner's commits.
  *
- * The two writes are separate commits. If the process dies between them the
- * head stays one behind, and #63 makes them atomic. Do not call this
- * concurrently for one stream.
+ * @param attempt - The attempt that just lost, starting at 1.
+ */
+function backOff(attempt: number): Promise<void> {
+  const ceiling = Math.min(10 * 2 ** attempt, 1000);
+  return new Promise((resolve) => {
+    setTimeout(resolve, Math.random() * ceiling);
+  });
+}
+
+/** Thrown when every attempt lost the race to another writer. */
+export class PublishConflictError extends Error {
+  /**
+   * @param stream - The stream that could not be published to.
+   * @param attempts - How many attempts were made.
+   */
+  constructor(stream: string, attempts: number) {
+    super(
+      `could not publish to ${stream}: the repo changed during each of ${attempts} attempts`,
+    );
+    this.name = "PublishConflictError";
+  }
+}
+
+/**
+ * Compute the CID the PDS gives a record, without writing it.
+ *
+ * @param record - A JSON record with no blobs or CID links.
+ * @returns The record's CID as a string.
+ */
+export async function recordCid(record: object): Promise<string> {
+  const cid = await cidForRecord(record as Parameters<typeof cidForRecord>[0]);
+  return cid.toString();
+}
+
+/**
+ * Tell whether an error is the PDS refusing a stale `swapCommit`.
+ *
+ * @param error - The error from `applyWrites`.
+ * @returns `true` if another commit landed first.
+ */
+function isInvalidSwap(error: unknown): boolean {
+  return error instanceof XRPCError && error.error === "InvalidSwap";
+}
+
+/**
+ * Publish the next event on a stream and move the head to it, in one commit.
+ *
+ * Reads the repo's latest commit and the head, then sends the event and the
+ * new head in one `applyWrites` guarded by `swapCommit`. If another commit
+ * landed in between, the PDS refuses the batch and this waits a moment, reads
+ * again, and retries, so concurrent publishers never reuse or skip a seq. Both records
+ * are checked against the contract before they are sent, since the PDS does
+ * not know our Lexicons.
+ *
+ * If the request fails for another reason, the response may have been lost
+ * after the PDS committed. The head is read again: if it is at this seq with
+ * this event's CID the write succeeded and is not sent twice. In that case
+ * `commitCid` and `rev` are the repo's latest commit at the time of the
+ * re-read, which is a later commit if another write landed since.
  *
  * @param session - The publisher session.
  * @param input - Stream, kind, and payload of the event.
  * @returns The seq, record key, and CID of the event, and its commit.
  * @throws ContractError if the input would make an invalid event.
+ * @throws PublishConflictError if the repo kept changing under every attempt.
  */
 export async function publishEvent(
   session: PublisherSession,
   input: PublishInput,
 ): Promise<Published> {
-  const head = await readHead(session, input.stream);
-  const seq = head === null ? 1 : head.seq + 1;
-  const rkey = eventRkey(input.stream, seq);
-
-  const event: EventRecord = parseEventRecord(
-    {
-      $type: EVENT_NSID,
-      stream: input.stream,
-      seq,
-      ...(head === null ? {} : { prevEventCid: head.eventCid }),
-      kind: input.kind,
-      ...(input.refSeq === undefined ? {} : { refSeq: input.refSeq }),
-      payload: input.payload,
-      createdAt:
-        typeof input.createdAt === "function"
-          ? input.createdAt(seq)
-          : input.createdAt,
-    },
-    rkey,
-  );
-
-  const repo = session.agent.com.atproto.repo;
-  const created = await repo.createRecord({
-    repo: session.did,
-    collection: EVENT_NSID,
-    rkey,
-    record: { ...event },
-  });
-  const { cid, commit } = created.data;
-  if (commit === undefined) {
-    throw new Error(`the PDS returned no commit for ${rkey}`);
-  }
-
+  const { repo, sync } = session.agent.com.atproto;
   const headKey = headRkey(input.stream);
-  const nextHead: HeadRecord = parseHeadRecord(
-    { $type: HEAD_NSID, stream: input.stream, seq, eventCid: cid },
-    headKey,
-  );
-  await repo.putRecord({
-    repo: session.did,
-    collection: HEAD_NSID,
-    rkey: headKey,
-    record: { ...nextHead },
-  });
 
-  return { seq, rkey, cid, commitCid: commit.cid, rev: commit.rev };
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
+    // The commit is read before the head: a commit that lands after this
+    // line makes the swap fail, so a stale head is never written over.
+    const latest = await sync.getLatestCommit({ did: session.did });
+    const head = await readHead(session, input.stream);
+    const seq = head === null ? 1 : head.seq + 1;
+    const rkey = eventRkey(input.stream, seq);
+
+    const event: EventRecord = parseEventRecord(
+      {
+        $type: EVENT_NSID,
+        stream: input.stream,
+        seq,
+        ...(head === null ? {} : { prevEventCid: head.eventCid }),
+        kind: input.kind,
+        ...(input.refSeq === undefined ? {} : { refSeq: input.refSeq }),
+        payload: input.payload,
+        createdAt:
+          typeof input.createdAt === "function"
+            ? input.createdAt(seq)
+            : input.createdAt,
+      },
+      rkey,
+    );
+    // The head names the event's CID, so it is computed before the write.
+    const cid = await recordCid(event);
+    const nextHead: HeadRecord = parseHeadRecord(
+      { $type: HEAD_NSID, stream: input.stream, seq, eventCid: cid },
+      headKey,
+    );
+
+    let data;
+    try {
+      const response = await repo.applyWrites({
+        repo: session.did,
+        swapCommit: latest.data.cid,
+        writes: [
+          {
+            $type: "com.atproto.repo.applyWrites#create",
+            collection: EVENT_NSID,
+            rkey,
+            value: { ...event },
+          },
+          {
+            $type:
+              head === null
+                ? "com.atproto.repo.applyWrites#create"
+                : "com.atproto.repo.applyWrites#update",
+            collection: HEAD_NSID,
+            rkey: headKey,
+            value: { ...nextHead },
+          },
+        ],
+      });
+      data = response.data;
+    } catch (error) {
+      if (isInvalidSwap(error)) {
+        if (attempt < MAX_ATTEMPTS) await backOff(attempt);
+        continue;
+      }
+      const after = await readHead(session, input.stream).catch(() => null);
+      if (after?.seq !== seq || after.eventCid !== cid) throw error;
+      const commit = await sync.getLatestCommit({ did: session.did });
+      return {
+        seq,
+        rkey,
+        cid,
+        commitCid: commit.data.cid,
+        rev: commit.data.rev,
+      };
+    }
+
+    const written = data.results?.[0];
+    if (written === undefined || !("cid" in written) || written.cid !== cid) {
+      throw new Error(
+        `the PDS stored ${rkey} with a different CID than the head names (${cid})`,
+      );
+    }
+    if (data.commit === undefined) {
+      throw new Error(`the PDS returned no commit for ${rkey}`);
+    }
+    return {
+      seq,
+      rkey,
+      cid,
+      commitCid: data.commit.cid,
+      rev: data.commit.rev,
+    };
+  }
+  throw new PublishConflictError(input.stream, MAX_ATTEMPTS);
 }

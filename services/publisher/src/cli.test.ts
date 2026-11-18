@@ -121,11 +121,11 @@ describe("runPublish", () => {
 
   test("fails if the stream moves while it is publishing", async () => {
     const session = fakeSession(repo);
-    const realPut = repo.putRecord;
+    const realApply = repo.applyWrites;
     let intruded = false;
     // Another writer publishes one event right after this run's first.
-    repo.putRecord = async (params) => {
-      const result = await realPut(params);
+    repo.applyWrites = async (params) => {
+      const result = await realApply(params);
       if (!intruded) {
         intruded = true;
         await runPublish(

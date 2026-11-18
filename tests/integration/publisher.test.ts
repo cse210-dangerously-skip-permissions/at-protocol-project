@@ -91,6 +91,52 @@ test("publishing 10 events yields seq 1 to 10 with valid links and a head at 10"
   expect(head).toMatchObject({ stream, seq: 10, eventCid: stored[9]?.cid });
 });
 
+test("two publishers at once write seq 1 to 40 with no duplicate and no gap", async () => {
+  const stream = `race${Date.now().toString(36)}`;
+
+  /** Log in separately and publish 20 events, as its own process would. */
+  const publishTwenty = async (name: string) => {
+    const session = await login(env);
+    const published: Published[] = [];
+    for (let i = 1; i <= 20; i += 1) {
+      published.push(
+        await publishEvent(session, {
+          stream,
+          kind: "release",
+          payload: { name, version: `1.0.${i}`, checksum: `sha256:${i}` },
+          createdAt: new Date().toISOString(),
+        }),
+      );
+    }
+    return published;
+  };
+
+  const published = (
+    await Promise.all([publishTwenty("left"), publishTwenty("right")])
+  ).flat();
+  expect(published.map((event) => event.seq).sort((a, b) => a - b)).toEqual(
+    Array.from({ length: 40 }, (_, index) => index + 1),
+  );
+
+  const stored = await listStream(stream);
+  expect(stored).toHaveLength(40);
+  stored.forEach((record, index) => {
+    const event = parseEventRecord(record.value, record.rkey);
+    expect(event.seq).toBe(index + 1);
+    expect(event.prevEventCid).toBe(stored[index - 1]?.cid);
+  });
+  // Each publisher's result names the event it wrote, not the other's.
+  for (const event of published) {
+    expect(stored[event.seq - 1]?.cid).toBe(event.cid);
+  }
+
+  const reader = await login(env);
+  expect(await readHead(reader, stream)).toMatchObject({
+    seq: 40,
+    eventCid: stored[39]?.cid,
+  });
+});
+
 test("publishing 3 then 3 gets the same CIDs from the PDS as publishing 6", async () => {
   const stream = `seed${Date.now().toString(36)}`;
   const session = await login(env);

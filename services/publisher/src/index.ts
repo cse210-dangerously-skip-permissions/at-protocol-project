@@ -3,6 +3,7 @@ export const packageName = "@trustlab/publisher";
 export {
   login,
   publishEvent,
+  PublishConflictError,
   readHead,
   type PublisherSession,
   type PublishInput,
