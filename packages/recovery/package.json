@@ -5,5 +5,13 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@atproto/identity": "^0.5.23",
+    "@atproto/repo": "^0.11.5",
+    "@trustlab/contracts": "*"
+  },
+  "devDependencies": {
+    "@atproto/crypto": "^0.5.7"
   }
 }
