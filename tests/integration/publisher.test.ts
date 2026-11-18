@@ -12,6 +12,7 @@ import {
   publishEvent,
   type Published,
   readHead,
+  runAmend,
   runPublish,
 } from "@trustlab/publisher";
 import { beforeAll, expect, test } from "vitest";
@@ -176,4 +177,37 @@ test("publishing 3 then 3 gets the same CIDs from the PDS as publishing 6", asyn
   expect(atOnce.map((event) => event.cid)).toEqual(
     split.map((event) => event.cid),
   );
+});
+
+test("withdrawing seq 2 of 3 appends event 4 and leaves event 2 alone", async () => {
+  const stream = `wd${Date.now().toString(36)}`;
+  const session = await login(env);
+  const options = { session, log: () => {} };
+
+  const published = await runPublish({ stream, count: 3, seed: 7 }, options);
+  const withdrawal = await runAmend(
+    { kind: "withdraw", stream, seq: 2, seed: 7 },
+    options,
+  );
+
+  const stored = await listStream(stream);
+  expect(stored).toHaveLength(4);
+  expect(stored[1]?.cid).toBe(published[1]?.cid);
+  const last = parseEventRecord(stored[3]?.value, stored[3]?.rkey);
+  expect(last).toMatchObject({
+    seq: 4,
+    kind: "withdraw",
+    refSeq: 2,
+    prevEventCid: published[2]?.cid,
+    payload: parseEventRecord(stored[1]?.value).payload,
+  });
+  expect(await readHead(session, stream)).toMatchObject({
+    seq: 4,
+    eventCid: withdrawal.cid,
+  });
+
+  await expect(
+    runAmend({ kind: "withdraw", stream, seq: 9, seed: 7 }, options),
+  ).rejects.toThrow(/no event at seq 9/);
+  expect(await listStream(stream)).toHaveLength(4);
 });

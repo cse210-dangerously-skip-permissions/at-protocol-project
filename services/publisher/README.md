@@ -35,6 +35,17 @@ The event at seq n depends only on the seed and n: its payload is entry n of the
 
 `publishEvent` has no default for `createdAt`. Every caller passes a time, or a function from the seq to a time, so nothing falls back to the clock by accident. Anything the harness compares across runs should pass `workloadCreatedAt(seed, seq)`.
 
+## Corrections and withdrawals
+
+```
+npm run publish-events -- withdraw --stream releases --seq 2 --seed 1
+npm run publish-events -- correct --stream releases --seq 2 --seed 1 --checksum sha256:fixed
+```
+
+Both append a new event of kind `withdraw` or `correct` with `refSeq` set to `--seq`. The event at `--seq` is read and never written, so its CID stays the same. The new event copies that event's payload, and `correct` replaces the fields given with `--version` or `--checksum`. `--seed` gives the new event's `createdAt` from its seq, as `publish` does.
+
+A `--seq` the stream does not have is rejected before anything is written. `src/amend.ts` holds `amendEvent` and `runAmend` for the harness and `trustlab` (#59).
+
 The integration test is `tests/integration/publisher.test.ts`. Run it with `npm run stack:up`, then `npm run test:integration`.
 
 AI agents: read [AGENTS.md](../../AGENTS.md) first.

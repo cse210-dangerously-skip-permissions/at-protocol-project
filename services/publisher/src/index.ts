@@ -11,3 +11,12 @@ export {
 } from "./publisher.js";
 export { runPublish, type PublishArgs, type PublishOptions } from "./cli.js";
 export { makeWorkload, workloadCreatedAt } from "./workload.js";
+export {
+  amendEvent,
+  readEvent,
+  runAmend,
+  type AmendArgs,
+  type AmendInput,
+  type AmendKind,
+  type AmendOptions,
+} from "./amend.js";
