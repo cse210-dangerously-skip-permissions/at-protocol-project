@@ -90,7 +90,15 @@ export async function runScenario(
   );
   const lock = join("results", ".running");
   await mkdir("results", { recursive: true });
-  await mkdir(lock);
+  try {
+    await mkdir(lock);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    throw new Error(
+      `Harness lock exists at ${lock}. Wait for the active run to finish. If it was interrupted, confirm it has stopped before removing the directory.`,
+      { cause: error },
+    );
+  }
   try {
     const completed: ResultRow[] = [];
     for (let run = 1; run <= opts.runs; run++) {
@@ -98,7 +106,8 @@ export async function runScenario(
       const dir = join("results", startedAt.slice(0, 10));
       const path = join(dir, `${name}.json`);
       const previous = await readRows(path);
-      for (const step of ["reset", "up", "seed"]) {
+      // stack:up seeds the accounts after its health checks pass.
+      for (const step of ["reset", "up"]) {
         const child = spawn(process.execPath, [stackScript, step], {
           stdio: "inherit",
         });

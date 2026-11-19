@@ -1,5 +1,5 @@
 import { ChildProcess, spawn } from "node:child_process";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runPublish } from "@trustlab/publisher";
@@ -48,16 +48,7 @@ test("resets and seeds before every publish and retains earlier configurations",
     return published;
   });
   const first = await runScenario("smoke", { runs: 2, config: "A0" });
-  expect(events).toEqual([
-    "reset",
-    "up",
-    "seed",
-    "publish",
-    "reset",
-    "up",
-    "seed",
-    "publish",
-  ]);
+  expect(events).toEqual(["reset", "up", "publish", "reset", "up", "publish"]);
   expect(first.map((row) => row.run)).toEqual([1, 2]);
   const second = await runScenario("smoke", { runs: 1, config: "S1" });
   expect(second[0]).toMatchObject({
@@ -99,4 +90,14 @@ test("rejects invalid requests before reset and releases the lock after failure"
   await expect(
     runScenario("smoke", { runs: 1, config: "A1" }),
   ).resolves.toHaveLength(1);
+});
+
+test("keeps an existing lock and stops before resetting the stack", async () => {
+  const lock = join("results", ".running");
+  await mkdir(lock, { recursive: true });
+  await expect(runScenario("smoke", { runs: 1, config: "A0" })).rejects.toThrow(
+    "Wait for the active run to finish",
+  );
+  expect(spawn).not.toHaveBeenCalled();
+  await expect(mkdir(lock)).rejects.toMatchObject({ code: "EEXIST" });
 });

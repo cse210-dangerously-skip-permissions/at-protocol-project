@@ -17,7 +17,7 @@ From the repo root with Docker Compose running:
 npm run harness -- --scenario smoke --runs 2
 ```
 
-Each repetition deletes the local stack's data volumes, starts the stack, and seeds its accounts. Smoke publishes one deterministic event and records the event count and publish time in milliseconds. Only scenarios that audit a stream return a verdict.
+Each repetition deletes the local stack's data volumes, starts the stack, and seeds its accounts. Smoke publishes one deterministic event and records the event count. Its `timingsMs.publish` measures the whole `runPublish` call, including login, the head read, and the write. Scenarios that need to exclude login time can pass an existing session to `runPublish`. Only scenarios that audit a stream return a verdict.
 
 `--runs` defaults to 1 and `--config` to `A0`. The runner passes the selected configuration (`A0`, `A1`, `S0`, or `S1`) and one-based run number to the scenario. To add a scenario, implement `Scenario` and add it to the list in `src/runner.ts`.
 
