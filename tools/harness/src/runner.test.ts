@@ -1,0 +1,102 @@
+import { ChildProcess, spawn } from "node:child_process";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { runPublish } from "@trustlab/publisher";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { runScenario } from "./runner.js";
+
+vi.mock("node:child_process", { spy: true });
+vi.mock("@trustlab/publisher", () => ({ runPublish: vi.fn() }));
+
+/** Return a child that completes on the next event loop turn. */
+function successfulStep() {
+  const child = new ChildProcess();
+  setImmediate(() => child.emit("close", 0));
+  return child;
+}
+
+const cwd = process.cwd();
+const published = [
+  { seq: 1, rkey: "event", cid: "record", commitCid: "commit", rev: "rev" },
+];
+let dir: string;
+
+beforeEach(async () => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-11-19T12:00:00Z"));
+  dir = await mkdtemp(join(tmpdir(), "trustlab-harness-"));
+  process.chdir(dir);
+  vi.mocked(spawn).mockImplementation(successfulStep);
+  vi.mocked(runPublish).mockResolvedValue(published);
+});
+afterEach(async () => {
+  process.chdir(cwd);
+  await rm(dir, { recursive: true, force: true });
+  vi.useRealTimers();
+  vi.resetAllMocks();
+});
+
+test("resets and seeds before every publish and retains earlier configurations", async () => {
+  const events: string[] = [];
+  vi.mocked(spawn).mockImplementation((_file, args) => {
+    if (Array.isArray(args)) events.push(args[1]);
+    return successfulStep();
+  });
+  vi.mocked(runPublish).mockImplementation(async () => {
+    events.push("publish");
+    return published;
+  });
+  const first = await runScenario("smoke", { runs: 2, config: "A0" });
+  expect(events).toEqual([
+    "reset",
+    "up",
+    "seed",
+    "publish",
+    "reset",
+    "up",
+    "seed",
+    "publish",
+  ]);
+  expect(first.map((row) => row.run)).toEqual([1, 2]);
+  const second = await runScenario("smoke", { runs: 1, config: "S1" });
+  expect(second[0]).toMatchObject({
+    scenario: "smoke",
+    config: "S1",
+    run: 1,
+    outcome: {
+      counts: { published: 1 },
+      timingsMs: { publish: expect.any(Number) },
+    },
+  });
+  const path = join(
+    dir,
+    "results",
+    first[0]!.startedAt.slice(0, 10),
+    "smoke.json",
+  );
+  expect(JSON.parse(await readFile(path, "utf8"))).toEqual([
+    ...first,
+    ...second,
+  ]);
+});
+
+test("rejects invalid requests before reset and releases the lock after failure", async () => {
+  await expect(
+    runScenario("unknown", { runs: 1, config: "A1" }),
+  ).rejects.toThrow("Unknown scenario");
+  await expect(runScenario("smoke", { runs: 0, config: "A1" })).rejects.toThrow(
+    "positive integer",
+  );
+  expect(spawn).not.toHaveBeenCalled();
+  vi.mocked(spawn).mockImplementationOnce(() => {
+    throw new Error("reset failed");
+  });
+  await expect(runScenario("smoke", { runs: 1, config: "A1" })).rejects.toThrow(
+    "reset failed",
+  );
+  expect(runPublish).not.toHaveBeenCalled();
+  await expect(
+    runScenario("smoke", { runs: 1, config: "A1" }),
+  ).resolves.toHaveLength(1);
+});

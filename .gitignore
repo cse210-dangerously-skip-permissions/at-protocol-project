@@ -5,4 +5,5 @@ coverage/
 .env.local
 infra/.env
 test-results/
+/results/
 consumer.db*

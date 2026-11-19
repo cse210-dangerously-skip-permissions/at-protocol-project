@@ -82,6 +82,8 @@ function down() {
  * @returns {number} The exit code.
  */
 function reset() {
+  // Compose resolves required secrets even for down on a fresh checkout.
+  createEnvFile(envFile);
   return compose(["down", "--volumes"]);
 }
 
