@@ -24,6 +24,7 @@
     "stack:reset": "node infra/scripts/stack.mjs reset",
     "stack:logs": "node infra/scripts/stack.mjs logs",
     "publish-events": "tsx services/publisher/src/cli.ts",
+    "consume": "tsx services/consumer/src/main.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "prepare": "husky",
