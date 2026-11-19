@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { Payload } from "@trustlab/contracts";
 
 const NAMES = [
@@ -47,8 +48,27 @@ export function seededRandom(seed: number): () => number {
 }
 
 /**
- * Make a list of synthetic releases. Pure: the same seed and count always
- * give the same list, and a longer list starts with the shorter one.
+ * The checksum a synthetic release carries: the SHA-256 of `name@version`.
+ * Anyone reading a demo can recompute it, so a tampered checksum stands out.
+ *
+ * @param name - Package name.
+ * @param version - Package version.
+ * @returns `sha256:` followed by 64 hex digits.
+ */
+export function releaseChecksum(name: string, version: string): string {
+  const digest = createHash("sha256")
+    .update(`${name}@${version}`)
+    .digest("hex");
+  return `sha256:${digest}`;
+}
+
+/**
+ * Make a list of synthetic releases that reads like a real release feed:
+ * each package starts at 1.0.0 and every later release of it bumps the
+ * patch, minor, or major number, so no package and version repeats.
+ *
+ * Pure: the same seed and count always give the same list, and a longer
+ * list starts with the shorter one.
  *
  * @param seed - Any integer.
  * @param count - How many payloads to make.
@@ -62,15 +82,25 @@ export function makeWorkload(seed: number, count: number): Payload[] {
 
   const random = seededRandom(seed);
   const pick = (n: number) => Math.floor(random() * n);
+  const latest = new Map<string, [number, number, number]>();
   const payloads: Payload[] = [];
   for (let i = 0; i < count; i += 1) {
     const name = NAMES[pick(NAMES.length)] as string;
-    const version = `${pick(3)}.${pick(10)}.${pick(20)}`;
-    let checksum = "sha256:";
-    for (let word = 0; word < 8; word += 1) {
-      checksum += pick(0x1_0000_0000).toString(16).padStart(8, "0");
+    // Both numbers are drawn for every event, so the event at a position
+    // never depends on how many packages have been released before it.
+    const roll = pick(10);
+    const previous = latest.get(name);
+    let next: [number, number, number] = [1, 0, 0];
+    if (previous !== undefined) {
+      const [major, minor, patch] = previous;
+      // Mostly patches, some minors, a rare major.
+      if (roll === 0) next = [major + 1, 0, 0];
+      else if (roll <= 3) next = [major, minor + 1, 0];
+      else next = [major, minor, patch + 1];
     }
-    payloads.push({ name, version, checksum });
+    latest.set(name, next);
+    const version = next.join(".");
+    payloads.push({ name, version, checksum: releaseChecksum(name, version) });
   }
   return payloads;
 }

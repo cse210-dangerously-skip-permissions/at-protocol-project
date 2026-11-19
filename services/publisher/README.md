@@ -31,6 +31,8 @@ npm run publish-events -- --stream releases --count 5 --seed 1
 
 It publishes a seeded workload of release events and prints one line per event: `published releases seq=1 cid=...`. `src/workload.ts` makes the payloads and `src/cli.ts` holds `runPublish`, which `trustlab publish` (#59) and the harness (#50) call.
 
+The workload reads like a release feed: each package starts at `1.0.0`, every later release of it bumps the patch, minor, or major number, and no package and version repeats. With seed 1 the stream starts `date-kit@1.0.0`, `safe-merge@1.0.0`, `env-check@1.0.0`, `safe-merge@1.0.1`. The checksum is the SHA-256 of `name@version` (`releaseChecksum`), so anyone can recompute it and a tampered one stands out.
+
 The event at seq n depends only on the seed and n: its payload is entry n of the workload and its `createdAt` is derived from the seed and the seq, not the clock. The command reads the head first and continues from there, so publishing 3 and then 3 writes the same records, with the same CIDs, as publishing 6 at once.
 
 `publishEvent` has no default for `createdAt`. Every caller passes a time, or a function from the seq to a time, so nothing falls back to the clock by accident. Anything the harness compares across runs should pass `workloadCreatedAt(seed, seq)`.
