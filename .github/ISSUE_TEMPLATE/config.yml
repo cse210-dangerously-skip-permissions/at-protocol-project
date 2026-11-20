@@ -1,0 +1,7 @@
+# Retrospective notes live in their own repo so they stay off this Issues tab.
+# Blank issues stay enabled for planning tickets.
+blank_issues_enabled: true
+contact_links:
+  - name: Sprint retrospective
+    url: https://github.com/cse210-dangerously-skip-permissions/week8-retros/issues/new/choose
+    about: Kudos, what went well, what to improve, and action items go in the week8-retros repo, not here.
