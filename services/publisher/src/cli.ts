@@ -11,6 +11,7 @@ import {
   readHead,
 } from "./publisher.js";
 import { integerOption } from "./args.js";
+import { tamperMain } from "./tamper.js";
 import { makeWorkload, workloadCreatedAt } from "./workload.js";
 
 const USAGE = `Usage: publish --stream <name> --count <n> --seed <n>
@@ -22,7 +23,8 @@ Publish a deterministic workload of release events to the local PDS.
   --seed    Workload seed. The same seed gives the same event at each seq
   --help    Show this text
 
-To amend an earlier event, run correct --help or withdraw --help.`;
+To amend an earlier event, run correct --help or withdraw --help.
+To break a stream on purpose, run tamper --help.`;
 
 /** What `runPublish` needs to publish a workload. */
 export interface PublishArgs {
@@ -120,8 +122,8 @@ export function parsePublishArgs(argv: readonly string[]): PublishArgs | null {
 }
 
 /**
- * Run the publisher CLI: `publish` by default, or `correct` or `withdraw`
- * when that is the first argument.
+ * Run the publisher CLI: `publish` by default, or `correct`, `withdraw`, or
+ * `tamper` when that is the first argument.
  *
  * @param argv - The command-line arguments.
  * @param options - A session and a log function, when not using the defaults.
@@ -133,6 +135,7 @@ export async function main(
 ): Promise<number> {
   const [command, ...rest] = argv;
   if (isAmendKind(command)) return amendMain(command, rest, options);
+  if (command === "tamper") return tamperMain(rest, options);
 
   const log = options.log ?? ((line: string) => console.log(line));
   let args: PublishArgs | null;

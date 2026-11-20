@@ -37,7 +37,8 @@ interface BatchWrite {
   $type: string;
   collection: string;
   rkey: string;
-  value: Record<string, unknown>;
+  /** Absent on a delete. */
+  value?: Record<string, unknown>;
 }
 
 interface BatchParams {
@@ -52,6 +53,11 @@ export class FakeRepo {
   readonly calls: string[] = [];
   returnCommit = true;
   #rev = 0;
+
+  /** How many commits `applyWrites` has made. */
+  get commits(): number {
+    return this.#rev;
+  }
 
   /** CID of the latest commit. A repo starts with one, as an account does. */
   get commitCid(): string {
@@ -73,7 +79,9 @@ export class FakeRepo {
   /** All writes land in one commit, or none do. */
   applyWrites = async (params: BatchParams) => {
     const cids = await Promise.all(
-      params.writes.map((write) => recordCid(write.value)),
+      params.writes.map((write) =>
+        write.value === undefined ? undefined : recordCid(write.value),
+      ),
     );
     // No await from here on: the check and the commit are one step, as on
     // the PDS.
@@ -88,15 +96,19 @@ export class FakeRepo {
       if (write.$type.endsWith("#create") && exists) {
         throw new XRPCError(400, "InvalidRequest", "Record already exists");
       }
-      if (write.$type.endsWith("#update") && !exists) {
+      if (!write.$type.endsWith("#create") && !exists) {
         throw new XRPCError(400, "InvalidRequest", "Record does not exist");
       }
     }
 
     const results = params.writes.map((write, index) => {
       const kind = write.$type.split("#")[1] as string;
-      const cid = cids[index] as string;
+      const cid = cids[index];
       this.calls.push(`${kind} ${write.collection}/${write.rkey}`);
+      if (cid === undefined) {
+        this.records.delete(`${write.collection}/${write.rkey}`);
+        return { $type: `${write.$type}Result` };
+      }
       this.records.set(`${write.collection}/${write.rkey}`, {
         cid,
         value: write.value,
