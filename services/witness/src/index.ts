@@ -6,3 +6,4 @@ export {
   type WitnessOptions,
   type WitnessStore,
 } from "./witness.js";
+export { CheckpointStore } from "./store.js";
