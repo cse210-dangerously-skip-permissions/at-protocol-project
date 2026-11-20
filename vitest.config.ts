@@ -10,6 +10,8 @@ export default defineConfig({
       // Package code only. The infra scripts are tooling, and their network
       // steps are tested against the running stack by `npm run stack:check`.
       include: [`${sourceRoots}/**/*.ts`],
+      // Generated from lexicons/ by `npm run codegen`.
+      exclude: ["packages/contracts/src/generated/**"],
       reporter: ["text", "json-summary"],
     },
   },

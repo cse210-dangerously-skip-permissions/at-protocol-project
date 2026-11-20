@@ -47,4 +47,6 @@ The namespace `dev.trustlab` stands for the domain `trustlab.dev`, which this te
 
 A change here changes the contract for every team. It needs a review from each team that reads these records, and after the Sprint 2 contract freeze it also needs its own issue.
 
+After editing a Lexicon, run `npm run codegen` and commit `packages/contracts/src/generated/`. Then fix `packages/contracts/src/types.ts` until `npm run typecheck` passes: it compares the hand-written types with the generated ones.
+
 AI agents: read [AGENTS.md](../AGENTS.md) first.

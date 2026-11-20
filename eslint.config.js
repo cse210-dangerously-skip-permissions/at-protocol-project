@@ -3,7 +3,13 @@ import { defineConfig, globalIgnores } from "eslint/config";
 import tseslint from "typescript-eslint";
 
 export default defineConfig([
-  globalIgnores(["**/dist/", "coverage/", "test-results/"]),
+  globalIgnores([
+    "**/dist/",
+    "coverage/",
+    "test-results/",
+    // Written by `npm run codegen` from lexicons/; CI checks it is current.
+    "packages/contracts/src/generated/",
+  ]),
   js.configs.recommended,
   tseslint.configs.recommended,
   {

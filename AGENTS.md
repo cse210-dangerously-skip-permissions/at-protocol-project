@@ -33,9 +33,10 @@ npm run test:coverage     # coverage must not drop below coverage-baseline.json
 npm run stack:up          # local AT network (Docker); writes .env.local
 npm run test:integration  # tests/integration/, needs stack:up
 npm run docs              # TypeDoc; warnings are errors
+npm run codegen           # after editing lexicons/: regenerates packages/contracts/src/generated/
 ```
 
-CI runs `lint`, `format:check`, `typecheck`, `test:coverage`, and `docs` on every PR. It doesn't run integration tests, so run those yourself when you touch AT code. The pre-commit hook runs Prettier.
+CI runs `lint`, `format:check`, `codegen:check`, `typecheck`, `test:coverage`, and `docs` on every PR. It doesn't run integration tests, so run those yourself when you touch AT code. The pre-commit hook runs Prettier.
 
 ## Tests
 
@@ -48,6 +49,7 @@ CI runs `lint`, `format:check`, `typecheck`, `test:coverage`, and `docs` on ever
 - **No contract edits without an issue.** `lexicons/` and `packages/contracts` need a review from every team that uses them. CODEOWNERS requests those reviews but one approval can merge, so make sure each team has reviewed.
 - **Services talk only through AT or `packages/contracts`.** Never import another package's `src/`.
 - **Validate network input at runtime.** Records from the firehose, `getRepo`, `getRecord`, or the witness API are `unknown` until a `parse*` from `@trustlab/contracts` checks them.
+- **Don't edit `packages/contracts/src/generated/`.** Change the Lexicon and run `npm run codegen`.
 - **Never disable type checks:** no `@ts-ignore`, no `any` to silence an error, no loosening `tsconfig.json` or lint rules.
 - **No code copied from other projects.** Cite prior art instead.
 - **New dependencies go in ADR-002** with the reason. Significant decisions get an ADR from `docs/adr/0000-template.md`.
