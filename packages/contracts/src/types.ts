@@ -118,6 +118,13 @@ export interface WitnessCheckpoint {
   observedAt: string;
 }
 
+/** Query of the witness's `GET /checkpoints?did=&stream=`. */
+export interface CheckpointsQuery {
+  /** DID of the publisher. */
+  did: string;
+  stream: string;
+}
+
 /** Response of the witness's `GET /checkpoints?did=&stream=`, newest first. */
 export interface CheckpointsResponse {
   checkpoints: WitnessCheckpoint[];
