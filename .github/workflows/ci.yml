@@ -22,3 +22,32 @@ jobs:
       - run: npm run format:check
       - run: npm run typecheck
       - run: npm run test:coverage
+
+  integration:
+    if: github.base_ref == 'main' || github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Read pinned PLC build from Compose
+        id: plc
+        run: |
+          docker compose -f infra/compose.yaml config --no-interpolate --format json |
+            jq -r '.services.plc | "context=\(.build.context)\nfile=\(.build.dockerfile)\ntag=\(.image)"' >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v4
+      - name: Build and load the PLC image
+        uses: docker/build-push-action@v7
+        with:
+          context: ${{ steps.plc.outputs.context }}
+          file: ${{ steps.plc.outputs.file }}
+          tags: ${{ steps.plc.outputs.tag }}
+          load: true
+          cache-from: type=gha,scope=plc
+          cache-to: type=gha,scope=plc,mode=max
+      - run: npm run stack:up
+      - run: npm run test:integration
