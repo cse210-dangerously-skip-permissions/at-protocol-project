@@ -238,18 +238,19 @@ test("tamperEdit gives event N a new CID and breaks the link from N+1", async ()
     { session, log: () => {} },
   );
 
-  await tamperEdit(session, stream, 2);
+  const result = await tamperEdit(session, stream, 2);
 
   const stored = await listStream(stream);
   expect(stored).toHaveLength(4);
   expect(stored[1]?.cid).not.toBe(published[1]?.cid);
+  expect(result.events).toEqual([{ seq: 2, cid: stored[1]?.cid }]);
   const next = parseEventRecord(stored[2]?.value, stored[2]?.rkey);
   expect(next.prevEventCid).toBe(published[1]?.cid);
   expect(next.prevEventCid).not.toBe(stored[1]?.cid);
   expect(linksAreValid(stored)).toBe(false);
 });
 
-test("tamperRewrite leaves a valid chain with new CIDs from N on", async () => {
+test("tamperRewrite leaves a valid chain with new CIDs from N on, in one commit", async () => {
   const stream = `tr${Date.now().toString(36)}`;
   const session = await login(env);
   const published = await runPublish(
@@ -257,10 +258,19 @@ test("tamperRewrite leaves a valid chain with new CIDs from N on", async () => {
     { session, log: () => {} },
   );
 
-  await tamperRewrite(session, stream, 3);
+  const result = await tamperRewrite(session, stream, 3);
 
   const stored = await listStream(stream);
   expect(stored).toHaveLength(5);
+  // The CIDs computed before the write are the ones the PDS stored, and the
+  // repo's latest commit is the one that carried all of them.
+  expect(result.events).toEqual(
+    [3, 4, 5].map((seq) => ({ seq, cid: stored[seq - 1]?.cid })),
+  );
+  const latest = await session.agent.com.atproto.sync.getLatestCommit({
+    did: session.did,
+  });
+  expect(result.commitCid).toBe(latest.data.cid);
   expect(linksAreValid(stored)).toBe(true);
   stored.forEach((record, index) => {
     if (index < 2) expect(record.cid).toBe(published[index]?.cid);
@@ -272,7 +282,7 @@ test("tamperRewrite leaves a valid chain with new CIDs from N on", async () => {
   });
 });
 
-test("tamperTruncate deletes later events and puts the head at N", async () => {
+test("tamperTruncate deletes later events and puts the head at N, in one commit", async () => {
   const stream = `tt${Date.now().toString(36)}`;
   const session = await login(env);
   const published = await runPublish(
@@ -280,7 +290,12 @@ test("tamperTruncate deletes later events and puts the head at N", async () => {
     { session, log: () => {} },
   );
 
-  await tamperTruncate(session, stream, 3);
+  const result = await tamperTruncate(session, stream, 3);
+  expect(result.head).toEqual({ seq: 3, eventCid: published[2]?.cid });
+  const latest = await session.agent.com.atproto.sync.getLatestCommit({
+    did: session.did,
+  });
+  expect(result.commitCid).toBe(latest.data.cid);
 
   const stored = await listStream(stream);
   expect(stored.map((record) => record.cid)).toEqual(

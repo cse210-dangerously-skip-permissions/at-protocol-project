@@ -22,9 +22,11 @@ export {
 } from "./amend.js";
 export {
   runTamper,
+  TamperConflictError,
   tamperEdit,
   tamperRewrite,
   tamperTruncate,
   type TamperArgs,
+  type Tampered,
   type TamperOptions,
 } from "./tamper.js";

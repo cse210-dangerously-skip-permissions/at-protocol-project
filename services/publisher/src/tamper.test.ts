@@ -6,49 +6,15 @@ import type { PublisherSession } from "./publisher.js";
 import {
   parseTamperArgs,
   runTamper,
+  TamperConflictError,
   tamperEdit,
   tamperMain,
   tamperRewrite,
   tamperTruncate,
 } from "./tamper.js";
-import { cidOf, FakeRepo, fakeSession } from "./test-support.js";
+import { FakeRepo, fakeSession } from "./test-support.js";
 
-interface RecordParams {
-  repo: string;
-  collection: string;
-  rkey: string;
-}
-
-/**
- * The fake repo plus the direct writes only the tamper tools make.
- *
- * @returns A fake repo with `putRecord`, `deleteRecord`, and a log of both.
- */
-function tamperRepo() {
-  const base = new FakeRepo();
-  const direct: string[] = [];
-  return Object.assign(base, {
-    direct,
-    putRecord: async (
-      params: RecordParams & { record: Record<string, unknown> },
-    ) => {
-      direct.push(`put ${params.collection}/${params.rkey}`);
-      const cid = cidOf(JSON.stringify(params.record));
-      base.records.set(`${params.collection}/${params.rkey}`, {
-        cid,
-        value: params.record,
-      });
-      return { data: { uri: "at://x", cid } };
-    },
-    deleteRecord: async (params: RecordParams) => {
-      direct.push(`delete ${params.collection}/${params.rkey}`);
-      base.records.delete(`${params.collection}/${params.rkey}`);
-      return { data: {} };
-    },
-  });
-}
-
-let repo: ReturnType<typeof tamperRepo>;
+let repo: FakeRepo;
 let session: PublisherSession;
 let lines: string[];
 const log = (line: string) => lines.push(line);
@@ -77,15 +43,35 @@ function chainIsValid(length: number): boolean {
   return head.seq === length && head.eventCid === repo.event(rkey(length)).cid;
 }
 
+/**
+ * Make another commit land the first time a tool reads a record, as a
+ * publish racing the tool would.
+ */
+function raceOnePublish(): void {
+  const realGet = repo.getRecord;
+  let raced = false;
+  repo.getRecord = async (params) => {
+    if (!raced) {
+      raced = true;
+      await runPublish(
+        { stream: "other", count: 1, seed: 1 },
+        { session, log: () => {} },
+      );
+      repo.calls.length = 0;
+    }
+    return realGet(params);
+  };
+}
+
 beforeEach(async () => {
-  repo = tamperRepo();
+  repo = new FakeRepo();
   session = fakeSession(repo);
   lines = [];
   await runPublish(
     { stream: "releases", count: 5, seed: 1 },
     { session, log: () => {} },
   );
-  repo.direct.length = 0;
+  repo.calls.length = 0;
 });
 
 describe("tamperEdit", () => {
@@ -93,9 +79,9 @@ describe("tamperEdit", () => {
     const before = cids();
     const original = repo.event(rkey(2)).value;
 
-    await tamperEdit(session, "releases", 2);
+    const result = await tamperEdit(session, "releases", 2);
 
-    expect(repo.direct).toEqual([`put ${EVENT_NSID}/${rkey(2)}`]);
+    expect(repo.calls).toEqual([`update ${EVENT_NSID}/${rkey(2)}`]);
     const after = cids();
     expect(after[1]).not.toBe(before[1]);
     expect([after[0], ...after.slice(2)]).toEqual([
@@ -107,6 +93,11 @@ describe("tamperEdit", () => {
     expect({ ...edited, payload: original.payload }).toEqual(original);
     expect(repo.event(rkey(3)).value.prevEventCid).toBe(before[1]);
     expect(chainIsValid(5)).toBe(false);
+    expect(result).toEqual({
+      events: [{ seq: 2, cid: after[1] }],
+      commitCid: repo.commitCid,
+      rev: expect.any(String),
+    });
   });
 
   test("editing the last event leaves the head pointing at the old CID", async () => {
@@ -116,6 +107,16 @@ describe("tamperEdit", () => {
 
     expect(repo.head("releases").eventCid).toBe(before[4]);
     expect(cids()[4]).not.toBe(before[4]);
+  });
+
+  test("the checksum keeps its length however often an event is edited", async () => {
+    const seen = new Set<string>();
+    for (let round = 0; round < 30; round += 1) {
+      await tamperEdit(session, "releases", 2);
+      seen.add(repo.event(rkey(2)).value.payload.checksum);
+    }
+    expect(seen.size).toBe(30);
+    expect(new Set([...seen].map((checksum) => checksum.length)).size).toBe(1);
   });
 
   test("rejects a seq the stream does not have, writing nothing", async () => {
@@ -128,15 +129,17 @@ describe("tamperEdit", () => {
     await expect(tamperEdit(session, "empty", 1)).rejects.toThrow(
       /empty has no events/,
     );
-    expect(repo.direct).toEqual([]);
+    expect(repo.calls).toEqual([]);
   });
 });
 
 describe("tamperRewrite", () => {
-  test("replaces events from a seq onward and keeps the chain valid", async () => {
+  test("replaces events from a seq onward in one commit and keeps the chain valid", async () => {
     const before = cids();
+    const commitBefore = repo.commitCid;
+    const commitsBefore = repo.commits;
 
-    await tamperRewrite(session, "releases", 3);
+    const result = await tamperRewrite(session, "releases", 3);
 
     const after = cids();
     expect(after.slice(0, 2)).toEqual(before.slice(0, 2));
@@ -144,12 +147,29 @@ describe("tamperRewrite", () => {
       expect(after[index]).not.toBe(before[index]);
     }
     expect(chainIsValid(5)).toBe(true);
-    expect(repo.direct).toEqual([
-      `put ${EVENT_NSID}/${rkey(3)}`,
-      `put ${EVENT_NSID}/${rkey(4)}`,
-      `put ${EVENT_NSID}/${rkey(5)}`,
-      `put ${HEAD_NSID}/head-releases`,
+    // One applyWrites: the fake records a batch's writes together and makes
+    // one commit per batch.
+    expect(repo.calls).toEqual([
+      `update ${EVENT_NSID}/${rkey(3)}`,
+      `update ${EVENT_NSID}/${rkey(4)}`,
+      `update ${EVENT_NSID}/${rkey(5)}`,
+      `update ${HEAD_NSID}/head-releases`,
     ]);
+    expect(repo.commits).toBe(commitsBefore + 1);
+    expect(result.commitCid).toBe(repo.commitCid);
+    expect(result.commitCid).not.toBe(commitBefore);
+    expect(result.events).toEqual(
+      [3, 4, 5].map((seq) => ({ seq, cid: after[seq - 1] })),
+    );
+    expect(result.head).toEqual({ seq: 5, eventCid: after[4] });
+  });
+
+  test("the first rewritten event keeps its link to the untouched one before it", async () => {
+    const before = cids();
+
+    await tamperRewrite(session, "releases", 3);
+
+    expect(repo.event(rkey(3)).value.prevEventCid).toBe(before[1]);
   });
 
   test("rewrites a whole stream from seq 1", async () => {
@@ -174,53 +194,112 @@ describe("tamperRewrite", () => {
     await expect(tamperRewrite(session, "releases", 2)).rejects.toThrow(
       /releases has no event at seq 4/,
     );
-    expect(repo.direct).toEqual([]);
+    expect(repo.calls).toEqual([]);
+  });
+
+  test("writes nothing if a publish lands while it is reading", async () => {
+    const before = cids();
+    raceOnePublish();
+
+    await expect(tamperRewrite(session, "releases", 3)).rejects.toThrow(
+      TamperConflictError,
+    );
+    expect(repo.calls).toEqual([]);
+    expect(cids()).toEqual(before);
+    expect(chainIsValid(5)).toBe(true);
+  });
+
+  test("writes nothing if the PDS refuses the batch", async () => {
+    const before = cids();
+    repo.applyWrites = async () => {
+      throw new XRPCError(500, "InternalServerError", "boom");
+    };
+
+    await expect(tamperRewrite(session, "releases", 3)).rejects.toThrow(/boom/);
+    expect(cids()).toEqual(before);
   });
 
   test("rejects a seq past the head", async () => {
     await expect(tamperRewrite(session, "releases", 6)).rejects.toThrow(
       RangeError,
     );
-    expect(repo.direct).toEqual([]);
+    expect(repo.calls).toEqual([]);
+  });
+
+  test("rejects a range too long for one commit", async () => {
+    await runPublish(
+      { stream: "long", count: 201, seed: 1 },
+      { session, log: () => {} },
+    );
+    repo.calls.length = 0;
+
+    await expect(tamperRewrite(session, "long", 2)).rejects.toThrow(
+      /needs 201 writes, and one commit takes at most 200/,
+    );
+    expect(repo.calls).toEqual([]);
   });
 });
 
 describe("tamperTruncate", () => {
-  test("deletes later events and moves the head back", async () => {
+  test("deletes later events and moves the head back in one commit", async () => {
     const before = cids();
+    const commitsBefore = repo.commits;
 
-    await tamperTruncate(session, "releases", 3);
+    const result = await tamperTruncate(session, "releases", 3);
 
     expect(cids()).toEqual([...before.slice(0, 3), undefined, undefined]);
     expect(chainIsValid(3)).toBe(true);
-    expect(repo.direct).toEqual([
+    expect(repo.calls).toEqual([
       `delete ${EVENT_NSID}/${rkey(4)}`,
       `delete ${EVENT_NSID}/${rkey(5)}`,
-      `put ${HEAD_NSID}/head-releases`,
+      `update ${HEAD_NSID}/head-releases`,
     ]);
+    expect(repo.commits).toBe(commitsBefore + 1);
+    expect(result).toEqual({
+      events: [],
+      head: { seq: 3, eventCid: before[2] },
+      commitCid: repo.commitCid,
+      rev: expect.any(String),
+    });
   });
 
-  test("rejects a seq that is not below the head", async () => {
-    for (const to of [5, 6, 0]) {
+  test("rejects a seq that is not below the head, saying so", async () => {
+    await expect(tamperTruncate(session, "releases", 5)).rejects.toThrow(
+      /truncate needs a seq below the head \(5\), got 5/,
+    );
+    for (const to of [6, 0]) {
       await expect(tamperTruncate(session, "releases", to)).rejects.toThrow(
         RangeError,
       );
     }
-    expect(repo.direct).toEqual([]);
+    expect(repo.calls).toEqual([]);
   });
 
-  test("fails without deleting if the kept event has no CID", async () => {
-    const realGet = repo.getRecord;
-    repo.getRecord = async (params) => {
-      const response = await realGet(params);
-      if (params.collection !== EVENT_NSID) return response;
-      return { data: { ...response.data, cid: undefined as never } };
-    };
+  test("rejects a kept event that is missing or malformed, writing nothing", async () => {
+    const key = `${EVENT_NSID}/${rkey(3)}`;
+    const stored = repo.records.get(key);
+    repo.records.set(key, { cid: "x", value: { nope: true } });
+    await expect(tamperTruncate(session, "releases", 3)).rejects.toThrow(
+      /invalid event record/,
+    );
+
+    repo.records.delete(key);
+    await expect(tamperTruncate(session, "releases", 3)).rejects.toThrow(
+      RangeError,
+    );
+    expect(repo.calls).toEqual([]);
+    expect(stored).toBeDefined();
+  });
+
+  test("writes nothing if a publish lands while it is reading", async () => {
+    const before = cids();
+    raceOnePublish();
 
     await expect(tamperTruncate(session, "releases", 3)).rejects.toThrow(
-      /no CID/,
+      /the repo changed while tampering with releases; nothing was written/,
     );
-    expect(repo.direct).toEqual([]);
+    expect(cids()).toEqual(before);
+    expect(repo.head("releases").seq).toBe(5);
   });
 });
 
@@ -257,12 +336,40 @@ describe("parseTamperArgs", () => {
     expect(() => parseTamperArgs(["edit", "--stream", "a"])).toThrow(
       /--seq needs a whole number/,
     );
-    expect(() =>
-      parseTamperArgs(["rewrite", "--stream", "a", "--seq", "2"]),
-    ).toThrow(/--from needs a whole number/);
+    expect(() => parseTamperArgs(["rewrite", "--stream", "a"])).toThrow(
+      /--from needs a whole number/,
+    );
     expect(() => parseTamperArgs(["truncate", "--stream", "a"])).toThrow(
       /--to needs a whole number/,
     );
+  });
+
+  test("rejects an option that belongs to another tool", () => {
+    expect(() =>
+      parseTamperArgs([
+        "truncate",
+        "--stream",
+        "a",
+        "--to",
+        "3",
+        "--from",
+        "1",
+      ]),
+    ).toThrow(/truncate takes --to, not --from/);
+    expect(() =>
+      parseTamperArgs(["edit", "--stream", "a", "--seq", "2", "--to", "1"]),
+    ).toThrow(/edit takes --seq, not --to/);
+    expect(() =>
+      parseTamperArgs([
+        "rewrite",
+        "--stream",
+        "a",
+        "--from",
+        "2",
+        "--seq",
+        "1",
+      ]),
+    ).toThrow(/rewrite takes --from, not --seq/);
   });
 });
 
@@ -302,18 +409,33 @@ describe("the command line", () => {
       ),
     ).toBe(0);
 
-    expect(lines).toEqual([
-      "tampered releases edit seq=2",
-      "tampered releases rewrite from=4",
-      "tampered releases truncate to=4",
-    ]);
     expect(repo.head("releases").seq).toBe(4);
+    expect(lines).toEqual([
+      expect.stringMatching(/^tampered releases edit seq=2 cid=b\w+$/),
+      expect.stringMatching(/^tampered releases rewrite seq=4 cid=b\w+$/),
+      expect.stringMatching(/^tampered releases rewrite seq=5 cid=b\w+$/),
+      `tampered releases truncate to=4 cid=${repo.event(rkey(4)).cid}`,
+    ]);
   });
 
-  test("rejects a bad stream name before logging in", async () => {
+  test("rejects a bad stream name or seq before logging in", async () => {
     await expect(
       runTamper({ tool: "edit", stream: "Bad-Stream", seq: 1 }, { log }),
     ).rejects.toThrow(/bad stream name/);
+    // No session is passed, so reaching login would fail another way.
+    expect(
+      await tamperMain(["edit", "--stream", "releases", "--seq", "0"]),
+    ).toBe(2);
+    expect(errors.join("\n")).toMatch(/seq must be an integer/);
+  });
+
+  test("runTamper returns what the tool wrote", async () => {
+    const result = await runTamper(
+      { tool: "rewrite", stream: "releases", from: 4 },
+      { session, log },
+    );
+    expect(result.events.map((event) => event.seq)).toEqual([4, 5]);
+    expect(result.head).toEqual({ seq: 5, eventCid: repo.event(rkey(5)).cid });
   });
 
   test("prints usage for --help and exits 0", async () => {
@@ -332,7 +454,7 @@ describe("the command line", () => {
       await tamperMain(["edit", "--stream", "releases", "--seq", "9"], options),
     ).toBe(2);
 
-    repo.putRecord = async () => {
+    repo.applyWrites = async () => {
       throw new XRPCError(500, "InternalServerError", "boom");
     };
     expect(

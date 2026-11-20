@@ -56,11 +56,15 @@ npm run publish-events -- tamper rewrite --stream releases --from 3
 npm run publish-events -- tamper truncate --stream releases --to 3
 ```
 
-`src/tamper.ts` breaks the contract on purpose, for experiments. Each tool uses plain `putRecord` and `deleteRecord` calls. These are legal writes by the account owner, so the PDS accepts them and only the chain and the witness can catch them.
+`src/tamper.ts` breaks the contract on purpose, for experiments. These are legal writes by the account owner, so the PDS accepts them and only the chain and the witness can catch them.
+
+Each tool sends one `applyWrites`, so a tamper is one commit: a consumer on the firehose sees the stream before it or after it, never halfway. The call sets `swapCommit` to the commit read before anything else. If a publish lands while the tool is reading, it throws `TamperConflictError` with nothing written, and does not retry. One commit takes at most 200 writes, so `rewrite` covers up to 199 events and `truncate` deletes up to 199.
 
 - `tamperEdit(session, stream, seq)` changes one event's payload in place. The event gets a new CID and the next event's `prevEventCid` no longer matches.
-- `tamperRewrite(session, stream, from)` rewrites every event from `from` to the head with a changed payload and a link to the rewritten event before it, then moves the head. The chain is valid on its own; only the CIDs differ from what was published before.
+- `tamperRewrite(session, stream, from)` rewrites every event from `from` to the head with a changed payload, then moves the head. The event at `from` keeps its link to the untouched event before it, and each later one links to the rewritten event before it. The chain is valid on its own; only the CIDs differ from what was published before.
 - `tamperTruncate(session, stream, to)` deletes the events after `to` and moves the head back to `to`.
+
+The changed checksum is `tampered:` plus the SHA-256 of the old one, so it has the same length however often an event is tampered with. Each function returns the new CIDs, the head it wrote, and the commit, and the command prints them: `tampered releases rewrite seq=3 cid=...` per event, or `tampered releases truncate to=3 cid=...`.
 
 Never run these against a stream you want to keep.
 
