@@ -1,5 +1,11 @@
 import { expect, test } from "vitest";
-import { makeWorkload, seededRandom, workloadCreatedAt } from "./workload.js";
+import { createHash } from "node:crypto";
+import {
+  makeWorkload,
+  releaseChecksum,
+  seededRandom,
+  workloadCreatedAt,
+} from "./workload.js";
 
 test("the same seed gives the same payloads", () => {
   expect(makeWorkload(7, 20)).toEqual(makeWorkload(7, 20));
@@ -21,6 +27,60 @@ test("payloads have a name, a version, and a sha256 checksum", () => {
     expect(payload.name).toMatch(/^[a-z]+-[a-z]+$/);
     expect(payload.version).toMatch(/^\d+\.\d+\.\d+$/);
     expect(payload.checksum).toMatch(/^sha256:[0-9a-f]{64}$/);
+  }
+});
+
+test("seed 1 starts with a feed a person can read", () => {
+  expect(
+    makeWorkload(1, 6).map((payload) => `${payload.name}@${payload.version}`),
+  ).toMatchInlineSnapshot(`
+    [
+      "date-kit@1.0.0",
+      "safe-merge@1.0.0",
+      "env-check@1.0.0",
+      "safe-merge@1.0.1",
+      "json-lens@1.0.0",
+      "json-lens@1.0.1",
+    ]
+  `);
+});
+
+test("each package starts at 1.0.0 and its versions only go up", () => {
+  const latest = new Map<string, number[]>();
+  for (const payload of makeWorkload(42, 300)) {
+    const version = payload.version.split(".").map(Number);
+    const previous = latest.get(payload.name);
+    if (previous === undefined) {
+      expect(payload.version).toBe("1.0.0");
+    } else {
+      const [major, minor, patch] = previous as [number, number, number];
+      expect([
+        [major + 1, 0, 0],
+        [major, minor + 1, 0],
+        [major, minor, patch + 1],
+      ]).toContainEqual(version);
+    }
+    latest.set(payload.name, version);
+  }
+  expect(latest.size).toBeGreaterThan(1);
+});
+
+test("no package and version is released twice", () => {
+  const releases = makeWorkload(7, 500).map(
+    (payload) => `${payload.name}@${payload.version}`,
+  );
+
+  expect(new Set(releases).size).toBe(500);
+});
+
+test("the checksum is the SHA-256 of name@version", () => {
+  const expected = createHash("sha256").update("left-pad@1.0.0").digest("hex");
+
+  expect(releaseChecksum("left-pad", "1.0.0")).toBe(`sha256:${expected}`);
+  for (const payload of makeWorkload(3, 20)) {
+    expect(payload.checksum).toBe(
+      releaseChecksum(payload.name, payload.version),
+    );
   }
 });
 

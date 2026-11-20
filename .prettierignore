@@ -2,3 +2,4 @@ package-lock.json
 coverage/
 dist/
 test-results/
+packages/contracts/src/generated/

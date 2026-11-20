@@ -8,6 +8,6 @@
   },
   "dependencies": {
     "@atproto/lexicon": "^0.7.19",
-    "@trustlab/lexicons": "*"
+    "multiformats": "^13.4.2"
   }
 }

@@ -5,6 +5,10 @@ Verified firehose subscription, DID allowlist, view, and checkpoint.
 - **Team:** Pipeline
 - **System:** Consumer (CNS)
 
+## Run
+
+`npm run consume` follows the firehose and saves into `consumer.db`, resuming from its checkpoint after a restart. `npm run consume -- --fresh` uses an empty in-memory database instead: no memory of earlier history, as the experiments require, and no file touched. `--db <path>` picks another file. Stop with Ctrl+C. The snapshot rebuild on startup comes with #45.
+
 ## Allowlist
 
 `makeAllowlist(dids)` (`src/allowlist.ts`) returns an `Allowlist`: `allow(did)` says whether to process data from that repo, and `dropped()` counts the calls that returned false. DIDs match exactly, and an empty list allows nothing. `allowlistFromEnv(env)` allows only `PUBLISHER_DID` from `.env.local`.
