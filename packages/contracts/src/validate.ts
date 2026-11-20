@@ -1,14 +1,7 @@
-import { type LexiconDoc, Lexicons } from "@atproto/lexicon";
-import eventLexicon from "@trustlab/lexicons/dev/trustlab/event.json" with { type: "json" };
-import headLexicon from "@trustlab/lexicons/dev/trustlab/head.json" with { type: "json" };
-import {
-  EVENT_NSID,
-  eventRkey,
-  HEAD_NSID,
-  headRkey,
-  isSeq,
-  isStreamName,
-} from "./keys.js";
+import type { ValidationResult } from "@atproto/lexicon";
+import { validateRecord as validateEventLexicon } from "./generated/types/dev/trustlab/event.js";
+import { validateRecord as validateHeadLexicon } from "./generated/types/dev/trustlab/head.js";
+import { eventRkey, headRkey, isSeq, isStreamName } from "./keys.js";
 import {
   type CheckpointsResponse,
   EVENT_KINDS,
@@ -30,27 +23,15 @@ export class ContractError extends Error {
   }
 }
 
-const lexicons = new Lexicons([
-  eventLexicon as LexiconDoc,
-  headLexicon as LexiconDoc,
-]);
-
 /**
- * Check a value against a record Lexicon.
+ * Throw if a value failed its record Lexicon. The validators are generated
+ * from `lexicons/` by `npm run codegen`; they also check the `$type`.
  *
  * @param what - What is being read, for the error message.
- * @param nsid - The record's collection.
- * @param value - The value to check.
+ * @param result - What the generated validator returned.
  */
-function assertLexicon(what: string, nsid: string, value: unknown): void {
-  try {
-    lexicons.assertValidRecord(nsid, value);
-  } catch (error) {
-    throw new ContractError(
-      what,
-      error instanceof Error ? error.message : String(error),
-    );
-  }
+function assertLexicon(what: string, result: ValidationResult): void {
+  if (!result.success) throw new ContractError(what, result.error.message);
 }
 
 /**
@@ -68,7 +49,7 @@ function assertLexicon(what: string, nsid: string, value: unknown): void {
  */
 export function parseEventRecord(value: unknown, rkey?: string): EventRecord {
   const what = "event record";
-  assertLexicon(what, EVENT_NSID, value);
+  assertLexicon(what, validateEventLexicon(value));
   const record = value as EventRecord;
   if (!isStreamName(record.stream)) {
     throw new ContractError(what, `bad stream name "${record.stream}"`);
@@ -114,7 +95,7 @@ export function parseEventRecord(value: unknown, rkey?: string): EventRecord {
  */
 export function parseHeadRecord(value: unknown, rkey?: string): HeadRecord {
   const what = "head record";
-  assertLexicon(what, HEAD_NSID, value);
+  assertLexicon(what, validateHeadLexicon(value));
   const record = value as HeadRecord;
   if (!isStreamName(record.stream)) {
     throw new ContractError(what, `bad stream name "${record.stream}"`);
