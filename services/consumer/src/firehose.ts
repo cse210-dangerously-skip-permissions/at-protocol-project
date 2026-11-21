@@ -1,6 +1,8 @@
+import { inspect } from "node:util";
 import { IdResolver, MemoryCache } from "@atproto/identity";
 import { type CommitEvt, type Event, Firehose } from "@atproto/sync";
 import {
+  log,
   EVENT_NSID,
   HEAD_NSID,
   type LocalEnv,
@@ -77,7 +79,11 @@ export function startFirehose(opts: FirehoseOptions): RunningFirehose {
             saveCommit(did, seq, writes);
           })
           .catch((error: unknown) => {
-            console.error(`firehose: commit seq=${seq} not saved:`, error);
+            log(
+              "consumer",
+              `firehose: commit seq=${seq} not saved: ${inspect(error)}`,
+              console.error,
+            );
           });
         return queue;
       },
@@ -85,7 +91,11 @@ export function startFirehose(opts: FirehoseOptions): RunningFirehose {
     handleEvent: (evt: Event) => {
       if (evt.event === "sync") {
         // A #sync means our copy of this repo may be stale. REC-7 rebuilds.
-        console.warn(`firehose: #sync for ${evt.did} at rev ${evt.rev}`);
+        log(
+          "consumer",
+          `firehose: #sync for ${evt.did} at rev ${evt.rev}`,
+          console.warn,
+        );
         return;
       }
       if (
@@ -99,7 +109,7 @@ export function startFirehose(opts: FirehoseOptions): RunningFirehose {
     onError: (error) => {
       // The library wraps the real reason (bad signature, unknown DID, ...)
       // in `cause`, so print the whole chain.
-      console.error("firehose:", error);
+      log("consumer", `firehose: ${inspect(error)}`, console.error);
     },
   });
 
@@ -119,8 +129,10 @@ export function startFirehose(opts: FirehoseOptions): RunningFirehose {
     if (first === undefined) return;
     if (!allow(did)) {
       dropped += 1;
-      console.log(
+      log(
+        "consumer",
         `dropped  did=${did} seq=${seq} (not allowlisted, ${dropped} dropped)`,
+        console.log,
       );
       return;
     }
@@ -128,8 +140,10 @@ export function startFirehose(opts: FirehoseOptions): RunningFirehose {
     const events: CommitEvent[] = [];
     for (const write of commitWrites) {
       const cid = write.event === "delete" ? "-" : write.cid.toString();
-      console.log(
+      log(
+        "consumer",
         `verified ${write.event} did=${did} rkey=${write.rkey} cid=${cid} rev=${write.rev}`,
+        console.log,
       );
       if (write.event === "create" && write.collection === EVENT_NSID) {
         // Verified means the publisher signed it, not that it follows our

@@ -152,8 +152,9 @@ test("logs and stores nothing when one byte of the frame is changed", async () =
 
   expect(added).toEqual([]);
   expect(console.error).toHaveBeenCalledWith(
-    `witness: not stored did=${DID} rev=${String(frame.rev)} stream=${STREAM}:`,
-    expect.any(String),
+    expect.stringContaining(
+      `witness: not stored did=${DID} rev=${String(frame.rev)} stream=${STREAM}:`,
+    ),
   );
 });
 
@@ -177,7 +178,6 @@ test("ignores other DIDs and skips malformed frames", async () => {
 
   expect(added).toHaveLength(1);
   expect(console.error).toHaveBeenCalledWith(
-    "witness: skipped frame:",
-    expect.any(Error),
+    expect.stringContaining("witness: skipped frame:"),
   );
 });

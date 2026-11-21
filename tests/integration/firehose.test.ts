@@ -101,8 +101,8 @@ test("saves verified events from the allowlisted publisher and drops other DIDs"
   await vi.waitFor(
     () =>
       expect(log).toHaveBeenCalledWith(
-        expect.stringMatching(
-          `^verified delete did=${env.PUBLISHER_DID} rkey=${rkey} cid=- rev=`,
+        expect.stringContaining(
+          `verified delete did=${env.PUBLISHER_DID} rkey=${rkey} cid=- rev=`,
         ),
       ),
     { timeout: 10_000 },

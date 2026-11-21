@@ -10,6 +10,7 @@ import {
   type PublisherSession,
   readHead,
 } from "./publisher.js";
+import { publisherLog } from "./log.js";
 import { integerOption } from "./args.js";
 import { tamperMain } from "./tamper.js";
 import { makeWorkload, workloadCreatedAt } from "./workload.js";
@@ -40,7 +41,7 @@ export interface PublishArgs {
 export interface PublishOptions {
   /** An existing session. Defaults to logging in with `.env.local`. */
   session?: PublisherSession;
-  /** Where the per-event lines go. Defaults to `console.log`. */
+  /** Where the per-event lines go. Defaults to structured output on stdout. */
   log?: (line: string) => void;
 }
 
@@ -66,7 +67,7 @@ export async function runPublish(
   }
   // Checks the seed and count before anything touches the network.
   makeWorkload(args.seed, args.count);
-  const log = options.log ?? ((line: string) => console.log(line));
+  const log = options.log ?? publisherLog;
   const session = options.session ?? (await login(loadLocalEnv()));
 
   const head = await readHead(session, args.stream);
@@ -137,24 +138,23 @@ export async function main(
   if (isAmendKind(command)) return amendMain(command, rest, options);
   if (command === "tamper") return tamperMain(rest, options);
 
-  const log = options.log ?? ((line: string) => console.log(line));
   let args: PublishArgs | null;
   try {
     args = parsePublishArgs(argv);
   } catch (error) {
-    console.error(error instanceof Error ? error.message : String(error));
-    console.error(USAGE);
+    publisherLog(error, console.error);
+    publisherLog(USAGE, console.error);
     return 2;
   }
   if (args === null) {
-    log(USAGE);
+    (options.log ?? console.log)(USAGE);
     return 0;
   }
   try {
     await runPublish(args, options);
     return 0;
   } catch (error) {
-    console.error(error instanceof Error ? error.message : String(error));
+    publisherLog(error, console.error);
     return error instanceof RangeError ? 2 : 1;
   }
 }

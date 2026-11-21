@@ -1,7 +1,7 @@
 import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { loadLocalEnv } from "@trustlab/contracts";
+import { loadLocalEnv, log } from "@trustlab/contracts";
 import { allowlistFromEnv } from "./allowlist.js";
 import { startFirehose } from "./firehose.js";
 import { ConsumerStore } from "./store.js";
@@ -52,8 +52,12 @@ export async function main(argv: readonly string[]): Promise<number> {
   try {
     db = parseConsumeArgs(argv);
   } catch (error) {
-    console.error(error instanceof Error ? error.message : String(error));
-    console.error(USAGE);
+    log(
+      "consumer",
+      error instanceof Error ? error.message : String(error),
+      console.error,
+    );
+    log("consumer", USAGE, console.error);
     return 2;
   }
   if (db === null) {
@@ -68,8 +72,10 @@ export async function main(argv: readonly string[]): Promise<number> {
     store,
     allow: allowlistFromEnv(env).allow,
   });
-  console.log(
+  log(
+    "consumer",
     `consuming ${env.PDS_URL} into ${db === ":memory:" ? "memory (fresh)" : db}`,
+    console.log,
   );
 
   await new Promise((resolve) => {
@@ -78,7 +84,7 @@ export async function main(argv: readonly string[]): Promise<number> {
   });
   await firehose.stop();
   store.close();
-  console.log("stopped");
+  log("consumer", "stopped", console.log);
   return 0;
 }
 
@@ -98,5 +104,10 @@ function isRunDirectly(): boolean {
 }
 
 if (isRunDirectly()) {
-  process.exitCode = await main(process.argv.slice(2));
+  try {
+    process.exitCode = await main(process.argv.slice(2));
+  } catch (error) {
+    log("consumer", String(error), console.error);
+    process.exitCode = 1;
+  }
 }

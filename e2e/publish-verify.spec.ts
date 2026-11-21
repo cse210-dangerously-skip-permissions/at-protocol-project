@@ -68,7 +68,13 @@ async function publish(
     .trim()
     .split("\n")
     .map((line) => {
-      const match = /^published (\S+) seq=(\d+) cid=(\S+)$/.exec(line);
+      const record = JSON.parse(line);
+      expect(record).toMatchObject({
+        service: "publisher",
+        runId: process.env.RUN_ID ?? null,
+        msg: expect.any(String),
+      });
+      const match = /^published (\S+) seq=(\d+) cid=(\S+)$/.exec(record.msg);
       if (match === null || match[1] !== stream) {
         throw new Error(`unexpected publish output: ${line}`);
       }
