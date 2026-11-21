@@ -1,0 +1,28 @@
+{
+  "signingKey": "did:key:zQ3shafYVzjMfNc5VEwgRLNdmUsxRzFTJM6BubraYXrefhcrj",
+  "commit": {
+    "ops": [
+      {
+        "cid": "bafyreidzgkxhd2cs3w73asvybzykyngwyc3yazs7h7r4brzg2my6ycjdce",
+        "path": "dev.trustlab.event/fixmwqus30a-000000000001",
+        "action": "create"
+      },
+      {
+        "cid": "bafyreicuzeurkdtqzdxgaln4zzc2pfj345nfdjdy5qaqnywjror3sm5enu",
+        "path": "dev.trustlab.head/head-fixmwqus30a",
+        "action": "create"
+      }
+    ],
+    "rev": "3n2twgv6tvs2u",
+    "seq": 15,
+    "repo": "did:plc:zg3jyjm3zhlitu2twbrmvvlb",
+    "time": "2026-11-21T20:21:05.997Z",
+    "blobs": [],
+    "since": "3n2tsbh2gss2u",
+    "blocks": "OqJlcm9vdHOB2CpYJQABcRIgAysuNZDetyVBjzuxg2+1m8T/SGL8XA+JzXMd7Fq/dZFndmVyc2lvbgG0AQFxEiCB+ClAfMEnOvrMw0xx51PRurQ8wkPPbu+I0mizPXHP46JhZYGkYWtYK2Rldi50cnVzdGxhYi5ldmVudC9maXhtd3F1czMwYS0wMDAwMDAwMDAwMDFhcABhdNgqWCUAAXESIIpbVMWkIL/fOsUwB6u0Aj3q+2oZaA52a6VUD5pZ15itYXbYKlglAAFxEiB5Mq5x6FLdv7BKuA5wrDTWwLeAZl8/48DHJtMx7AkjEWFs9lMBcRIgiltUxaQgv986xTAHq7QCPer7ahloDnZrpVQPmlnXmK2iYWWAYWzYKlglAAFxEiAKFyJA/PCM354sMPn2gYxb3YPgguxUBEvBPMZfaSkC6IMBAXESIAoXIkD88Izfniww+faBjFvdg+CC7FQES8E8xl9pKQLoomFlgaRha1giZGV2LnRydXN0bGFiLmhlYWQvaGVhZC1maXhtd3F1czMwYWFwAGF09mF22CpYJQABcRIgVMkpFQ5wyO5gLbzORaeVO+daUaR47AEG4smLo7kzpG1hbPaBAgFxEiB5Mq5x6FLdv7BKuA5wrDTWwLeAZl8/48DHJtMx7AkjEaZjc2VxAWRraW5kZ3JlbGVhc2VlJHR5cGVyZGV2LnRydXN0bGFiLmV2ZW50ZnN0cmVhbWtmaXhtd3F1czMwYWdwYXlsb2Fko2RuYW1la3Rpbnktcm91dGVyZ3ZlcnNpb25lMS4wLjBoY2hlY2tzdW14R3NoYTI1NjpkNjc4NDhjNTRmYWE1NDU2ZjMxYWFhYzA4NjMwMjBlYTM0NzliZGNhNmYzMjU0NGFiZTU5M2ViYTcxNDMyOTczaWNyZWF0ZWRBdHgYMjAyNi0wMi0yMVQwMDowMDowMC4wMDBamwEBcRIgVMkpFQ5wyO5gLbzORaeVO+daUaR47AEG4smLo7kzpG2kY3NlcQFlJHR5cGVxZGV2LnRydXN0bGFiLmhlYWRmc3RyZWFta2ZpeG13cXVzMzBhaGV2ZW50Q2lkeDtiYWZ5cmVpZHpna3hoZDJjczN3NzNhc3Z5Ynp5a3luZ3d5YzN5YXpzN2g3cjRicnpnMm15NnljamRjZeABAXESIAMrLjWQ3rclQY87sYNvtZvE/0hi/FwPic1zHexav3WRpmNkaWR4IGRpZDpwbGM6emczanlqbTN6aGxpdHUydHdicm12dmxiY3Jldm0zbjJ0d2d2NnR2czJ1Y3NpZ1hAFV5U6lEz30Yfj/4WYfR6p3LOg3Z3t0gNhU8RviEx1OskKlRXyZ0q74f16b3MLRc5p8XYRV+i2fvCgM9bgdOgwGRkYXRh2CpYJQABcRIggfgpQHzBJzr6zMNMcedT0bq0PMJDz27viNJosz1xz+NkcHJldvZndmVyc2lvbgM=",
+    "commit": "bafyreiadfmxdleg6w4suddz3wgbw7nm3yt7uqyx4lqhyttltdxwfvp3vse",
+    "rebase": false,
+    "tooBig": false,
+    "prevData": "bafyreie5737gdxlw5i64vzichcalba3z2v5n6icifvx5xytvske7mr3hpm"
+  }
+}

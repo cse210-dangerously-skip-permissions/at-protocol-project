@@ -20,4 +20,18 @@ The proof is checked against `signingKey`, the key the witness stored. ADR-003 r
 
 `proofCar` can be the whole `blocks` CAR of the firehose commit or just the commit, the MST path, and the head record; both verify. [The #46 spike](../../tools/harness/spikes/README.md) has the sizes.
 
+## Tampered-commit fixtures
+
+`src/commit-fixtures.test.ts` (#51) runs `parseCommitAuthenticated` from `@atproto/sync`, the verifier the consumer's firehose uses, on one real commit from the local PDS and four tampered copies. It needs no stack: the resolver is a stub that returns the key saved with the capture.
+
+| Case                                | Result                             |
+| ----------------------------------- | ---------------------------------- |
+| The original capture                | both ops verified                  |
+| Commit re-signed with a flipped sig | throws `Invalid signature`         |
+| Event bytes changed, same CID       | throws `Not a valid CID for bytes` |
+| Event op claims a different CID     | event op dropped, no error         |
+| `repo` set to another DID           | throws `Invalid repo did`          |
+
+The fourth case is the silent drop ADR-002 describes. The fixture is `test/fixtures/commit.json`; [`capture-commit.ts`](../../tools/harness/spikes/README.md) rewrites it.
+
 AI agents: read [AGENTS.md](../../AGENTS.md) first.

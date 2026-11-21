@@ -2,6 +2,15 @@
 
 Short scripts that answer one question against the local stack. They are not imported by anything and have no unit tests. Each one names the issue it answers.
 
+## `capture-commit.ts`: capture a commit for the tampered-commit fixtures (#51, AUD-2)
+
+```
+npm run stack:up
+npx tsx tools/harness/spikes/capture-commit.ts
+```
+
+Publishes one seeded event on a fresh stream and writes that commit's raw `#commit` frame, with the publisher's signing key, to `packages/auditor/test/fixtures/commit.json`. CIDs are strings and bytes are base64. `packages/auditor/src/commit-fixtures.test.ts` reads it offline. Rerun it only to refresh the fixture.
+
 ## `capture-head.ts`: capture a provable head (#46, WIT-1)
 
 ```
