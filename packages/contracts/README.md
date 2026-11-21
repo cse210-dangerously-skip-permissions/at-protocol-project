@@ -47,3 +47,7 @@ A change here changes the contract for every team, so it needs a review from eac
 The types everyone imports (`EventRecord`, `HeadRecord`, `Payload`, `EventKind`) stay hand-written in `src/types.ts`, because the generated ones allow any extra field and any `kind` string. `src/lexicon.test.ts` compares the two at compile time, so when a Lexicon changes, `npm run typecheck` fails until `types.ts` matches it. ADR-002 records why lex-cli.
 
 AI agents: read [AGENTS.md](../../AGENTS.md) first.
+
+## Service logs
+
+`log(service, msg)` writes one JSON object per line with a UTC timestamp (`ts`), service name, `runId`, and message (`msg`). The logger reads `RUN_ID` at each call. Outside a harness run, an unset `RUN_ID` produces `null`. Pass a line writer such as `console.error` to send a message to stderr.

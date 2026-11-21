@@ -29,7 +29,7 @@ If the request fails for any other reason, the response may have been lost after
 npm run publish-events -- --stream releases --count 5 --seed 1
 ```
 
-It publishes a seeded workload of release events and prints one line per event: `published releases seq=1 cid=...`. `src/workload.ts` makes the payloads and `src/cli.ts` holds `runPublish`, which `trustlab publish` (#59) and the harness (#50) call.
+It publishes a seeded workload of release events and prints one JSON line per event. The `msg` field contains `published releases seq=1 cid=...`. `src/workload.ts` makes the payloads and `src/cli.ts` holds `runPublish`, which `trustlab publish` (#59) and the harness (#50) call.
 
 The workload reads like a release feed: each package starts at `1.0.0`, every later release of it bumps the patch, minor, or major number, and no package and version repeats. With seed 1 the stream starts `date-kit@1.0.0`, `safe-merge@1.0.0`, `env-check@1.0.0`, `safe-merge@1.0.1`. The checksum is the SHA-256 of `name@version` (`releaseChecksum`), so anyone can recompute it and a tampered one stands out.
 

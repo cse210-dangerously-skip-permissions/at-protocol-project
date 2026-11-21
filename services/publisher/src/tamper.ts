@@ -13,6 +13,7 @@ import {
   parseEventRecord,
   parseHeadRecord,
 } from "@trustlab/contracts";
+import { publisherLog } from "./log.js";
 import { integerOption } from "./args.js";
 import {
   login,
@@ -406,7 +407,7 @@ export type TamperArgs =
 export interface TamperOptions {
   /** An existing session. Defaults to logging in with `.env.local`. */
   session?: PublisherSession;
-  /** Where the result line goes. Defaults to `console.log`. */
+  /** Where the result line goes. Defaults to structured output on stdout. */
   log?: (line: string) => void;
 }
 
@@ -487,7 +488,7 @@ export async function runTamper(
   // Checks the seq before logging in, so a bad one fails the same way
   // whether or not the PDS is up.
   eventRkey(args.stream, seq);
-  const log = options.log ?? ((line: string) => console.log(line));
+  const log = options.log ?? publisherLog;
   const session = options.session ?? (await login(loadLocalEnv()));
 
   let result: Tampered;
@@ -526,24 +527,23 @@ export async function tamperMain(
   argv: readonly string[],
   options: TamperOptions = {},
 ): Promise<number> {
-  const log = options.log ?? ((line: string) => console.log(line));
   let args: TamperArgs | null;
   try {
     args = parseTamperArgs(argv);
   } catch (error) {
-    console.error(error instanceof Error ? error.message : String(error));
-    console.error(USAGE);
+    publisherLog(error, console.error);
+    publisherLog(USAGE, console.error);
     return 2;
   }
   if (args === null) {
-    log(USAGE);
+    (options.log ?? console.log)(USAGE);
     return 0;
   }
   try {
     await runTamper(args, options);
     return 0;
   } catch (error) {
-    console.error(error instanceof Error ? error.message : String(error));
+    publisherLog(error, console.error);
     return error instanceof RangeError ? 2 : 1;
   }
 }
