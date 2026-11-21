@@ -5,6 +5,17 @@ Chain validation, witness comparison, and verdicts.
 - **Team:** Trust
 - **System:** Auditor & Test Harness (AUD)
 
+## Chain validation
+
+`validateChain(events, head?)` (`src/chain.ts`) checks one publisher stream
+without network or database access. It accepts events in any order and checks
+the genesis rule, sequence continuity, every `prevEventCid`, correction and
+withdrawal targets, and the optional head. It returns the first conflict with
+the affected sequence, or `accept` with reason `ok` or `empty`.
+
+Records must pass `parseEventRecord` before they are put in a `StoredEvent`.
+The validator checks relationships between those individually valid records.
+
 ## Checkpoints
 
 `verifyCheckpoint(cp)` (`src/checkpoint.ts`) checks a `WitnessCheckpoint` offline, with no network and no PDS. It returns true only if:

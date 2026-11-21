@@ -1,5 +1,6 @@
 export const packageName = "@trustlab/auditor";
 
+export { validateChain } from "./chain.js";
 export {
   type CheckpointCheck,
   checkCheckpoint,
