@@ -12,6 +12,7 @@
     "@trustlab/contracts": "*"
   },
   "devDependencies": {
-    "@atproto/crypto": "^0.5.7"
+    "@atproto/crypto": "^0.5.7",
+    "@atproto/sync": "^0.4.25"
   }
 }
