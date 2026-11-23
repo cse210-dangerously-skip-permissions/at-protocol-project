@@ -150,6 +150,79 @@ export class ConsumerStore {
   }
 
   /**
+   * Replace one repo's events and rev with a rebuild from its snapshot, in a
+   * single transaction.
+   *
+   * Every stored event for `did` is deleted and `events` written in their
+   * place, so the view matches what the publisher serves now. The feed
+   * cursor and other repos are left alone: a snapshot has no firehose
+   * position. Nothing is written if an event belongs to another DID, a seq
+   * is not a positive integer, two events share a stream and seq, or `rev`
+   * is older than the stored rev (revs are TIDs, which sort by time), so a
+   * stale PDS cannot move the view backwards.
+   *
+   * @param did - The repo to replace.
+   * @param rev - The snapshot's repo revision.
+   * @param events - The events to store, such as `planRebuild` returns.
+   * @returns How many events were written.
+   * @throws RangeError for a seq that is not a positive integer.
+   * @throws Error for an event from another DID or an older `rev`.
+   */
+  replaceRepo(
+    did: string,
+    rev: string,
+    events: readonly StoredEvent[],
+  ): number {
+    for (const event of events) {
+      assertInteger("seq", event.seq, 1);
+      if (event.did !== did) {
+        throw new Error(`cannot store an event from ${event.did} as ${did}`);
+      }
+    }
+
+    this.#db.exec("BEGIN IMMEDIATE");
+    try {
+      const stored = this.#db
+        .prepare("SELECT rev FROM repo_revs WHERE did = ?")
+        .get(did) as { rev: string } | undefined;
+      if (stored !== undefined && rev < stored.rev) {
+        throw new Error(
+          `the snapshot rev ${rev} is older than the stored rev ${stored.rev} for ${did}`,
+        );
+      }
+
+      this.#db.prepare("DELETE FROM events WHERE did = ?").run(did);
+      const insertEvent = this.#db.prepare(
+        "INSERT INTO events (did, stream, seq, rkey, cid, record) VALUES (?, ?, ?, ?, ?, ?)",
+      );
+      for (const event of events) {
+        insertEvent.run(
+          event.did,
+          event.stream,
+          event.seq,
+          event.rkey,
+          event.cid,
+          JSON.stringify(event.record),
+        );
+      }
+      this.#db
+        .prepare(
+          "INSERT INTO repo_revs (did, rev) VALUES (?, ?) ON CONFLICT (did) DO UPDATE SET rev = excluded.rev",
+        )
+        .run(did, rev);
+      this.#db.exec("COMMIT");
+      return events.length;
+    } catch (error) {
+      try {
+        this.#db.exec("ROLLBACK");
+      } catch {
+        // SQLite already rolled back; rethrow the original error below.
+      }
+      throw error;
+    }
+  }
+
+  /**
    * Read the checkpoint.
    *
    * @returns The feed cursor and the last rev per DID.

@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import type { StoredEvent } from "@trustlab/contracts";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import {
   ConsumerStore,
@@ -235,5 +236,113 @@ describe("view and checkpoint stay in sync", () => {
     store.close();
     store = new ConsumerStore(dbPath);
     expectInSyncAt(store, 2);
+  });
+});
+
+/**
+ * A stored event for `replaceRepo`, as a rebuild plan would hold it.
+ *
+ * @param seq - Its seq in `STREAM`.
+ * @param cid - Its CID.
+ * @param did - The repo it belongs to.
+ * @returns The event.
+ */
+function stored(seq: number, cid = `cid-${seq}`, did = DID): StoredEvent {
+  return {
+    did,
+    stream: STREAM,
+    seq,
+    rkey: `${STREAM}-${String(seq).padStart(12, "0")}`,
+    cid,
+    record: { name: "pkg", version: `1.0.${seq}` },
+  };
+}
+
+/** The `seq:cid` pairs of the DID's stored events, lowest seq first. */
+function view(did = DID): string[] {
+  return store.getEvents(did, STREAM).map((e) => `${e.seq}:${e.cid}`);
+}
+
+describe("replaceRepo", () => {
+  test("replaces the DID's events and sets its rev", () => {
+    for (const n of [1, 2, 3]) store.applyCommit(commit(n));
+
+    const applied = store.replaceRepo(DID, "rev-9", [
+      stored(1, "new-1"),
+      stored(2),
+    ]);
+
+    expect(applied).toBe(2);
+    expect(view()).toEqual(["1:new-1", "2:cid-2"]);
+    expect(store.getCheckpoint().revs[DID]).toBe("rev-9");
+  });
+
+  test("leaves other DIDs and the feed cursor alone", () => {
+    const other = "did:plc:other";
+    store.applyCommit(commit(1));
+    store.applyCommit({ ...commit(2), did: other, rev: "rev-other" });
+
+    store.replaceRepo(DID, "rev-9", [stored(5)]);
+
+    expect(view(other)).toEqual(["2:cid-2"]);
+    expect(store.getCheckpoint()).toEqual({
+      cursor: 2,
+      revs: { [DID]: "rev-9", [other]: "rev-other" },
+    });
+  });
+
+  test("clears the DID when given no events", () => {
+    store.applyCommit(commit(1));
+
+    expect(store.replaceRepo(DID, "rev-9", [])).toBe(0);
+    expect(view()).toEqual([]);
+    expect(store.getCheckpoint().revs[DID]).toBe("rev-9");
+  });
+
+  test("refuses an older rev and writes nothing", () => {
+    store.applyCommit(commit(5));
+
+    expect(() => store.replaceRepo(DID, "rev-4", [stored(1)])).toThrow(/older/);
+    expect(view()).toEqual(["5:cid-5"]);
+    expect(store.getCheckpoint().revs[DID]).toBe("rev-5");
+  });
+
+  test("accepts the same rev", () => {
+    store.applyCommit(commit(5));
+
+    expect(store.replaceRepo(DID, "rev-5", [stored(1)])).toBe(1);
+    expect(view()).toEqual(["1:cid-1"]);
+  });
+
+  test("rejects an event from another DID and writes nothing", () => {
+    store.applyCommit(commit(1));
+
+    expect(() =>
+      store.replaceRepo(DID, "rev-9", [
+        stored(1, "new-1"),
+        stored(2, "cid-2", "did:plc:other"),
+      ]),
+    ).toThrow(/did:plc:other/);
+    expectInSyncAt(store, 1);
+  });
+
+  test("rolls back on the same stream and seq twice", () => {
+    store.applyCommit(commit(1));
+
+    expect(() =>
+      store.replaceRepo(DID, "rev-9", [stored(2, "a"), stored(2, "b")]),
+    ).toThrow(/UNIQUE constraint failed/);
+    expectInSyncAt(store, 1);
+  });
+
+  test("rejects a non-integer or zero seq before writing", () => {
+    store.applyCommit(commit(1));
+
+    for (const seq of [1.5, 0]) {
+      expect(() =>
+        store.replaceRepo(DID, "rev-9", [{ ...stored(1), seq }]),
+      ).toThrow(RangeError);
+    }
+    expectInSyncAt(store, 1);
   });
 });

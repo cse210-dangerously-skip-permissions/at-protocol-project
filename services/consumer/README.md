@@ -23,6 +23,8 @@ Call `allow` with a commit's repo DID before parsing or storing anything from it
 
 `ConsumerStore` (`src/store.ts`) keeps the event view and the checkpoint in one SQLite database, using Node's built-in `node:sqlite`. `applyCommit` writes a commit's events, the feed cursor, and the repo rev in one transaction, so a crash leaves the view and checkpoint at the same commit.
 
+`replaceRepo(did, rev, events)` writes a rebuild from a snapshot (`planRebuild` in `@trustlab/recovery`, #44): in one transaction it deletes the DID's events, stores the new ones, and sets the DID's rev. The view then matches what the publisher serves now. The feed cursor and other DIDs stay as they are. It writes nothing if an event belongs to another DID, a seq is not a positive integer, two events share a stream and seq, or the rev is older than the stored one.
+
 `StoredEvent` and `ConsumerCheckpoint` come from `@trustlab/contracts`.
 
 AI agents: read [AGENTS.md](../../AGENTS.md) first.
