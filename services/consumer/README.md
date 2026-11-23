@@ -9,6 +9,10 @@ Verified firehose subscription, DID allowlist, view, and checkpoint.
 
 `npm run consume` follows the firehose and saves into `consumer.db`, resuming from its checkpoint after a restart. `npm run consume -- --fresh` uses an empty in-memory database instead: no memory of earlier history, as the experiments require, and no file touched. `--db <path>` picks another file. Stop with Ctrl+C. The snapshot rebuild on startup comes with #45.
 
+## Freshness
+
+`freshVerdict(stored, verifiedAsOf, now, maxAgeMs)` (`src/freshness.ts`) decides what verdict to report. If the last successful check against the PDS is older than `FRESHNESS_MS` (default 30 seconds, read with `freshnessMs`), or there never was one, the answer is `unknown` with reason `stale`, whatever the stored verdict was. Storing `verified_as_of` with each verdict comes with #68.
+
 ## Allowlist
 
 `makeAllowlist(dids)` (`src/allowlist.ts`) returns an `Allowlist`: `allow(did)` says whether to process data from that repo, and `dropped()` counts the calls that returned false. DIDs match exactly, and an empty list allows nothing. `allowlistFromEnv(env)` allows only `PUBLISHER_DID` from `.env.local`.
