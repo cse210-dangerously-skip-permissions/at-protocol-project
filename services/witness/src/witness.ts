@@ -1,3 +1,4 @@
+import { inspect } from "node:util";
 import { IdResolver, MemoryCache } from "@atproto/identity";
 import { Subscription } from "@atproto/xrpc-server";
 import { checkCheckpoint } from "@trustlab/auditor";
@@ -107,7 +108,7 @@ export function startWitness(opts: WitnessOptions): RunningWitness {
         } catch (error) {
           log(
             "witness",
-            `witness: skipped frame: ${String(error)}`,
+            `witness: skipped frame: ${inspect(error)}`,
             console.error,
           );
           continue;
@@ -119,7 +120,7 @@ export function startWitness(opts: WitnessOptions): RunningWitness {
           } catch (error) {
             log(
               "witness",
-              `witness: not stored did=${commit.repo} rev=${commit.rev} stream=${head.stream}: ${String(error)}`,
+              `witness: not stored did=${commit.repo} rev=${commit.rev} stream=${head.stream}: ${inspect(error)}`,
               console.error,
             );
           }
@@ -129,7 +130,7 @@ export function startWitness(opts: WitnessOptions): RunningWitness {
       if (!abort.signal.aborted)
         log(
           "witness",
-          `witness: subscription: ${String(error)}`,
+          `witness: subscription: ${inspect(error)}`,
           console.error,
         );
     }

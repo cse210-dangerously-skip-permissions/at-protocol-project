@@ -158,6 +158,18 @@ test("logs and stores nothing when one byte of the frame is changed", async () =
   );
 });
 
+test("logs the underlying cause when a signing key lookup fails", async () => {
+  lib.resolveKey.mockRejectedValueOnce(
+    new Error("fetch failed", { cause: new Error("PLC connection refused") }),
+  );
+
+  await run(frame);
+
+  expect(console.error).toHaveBeenCalledWith(
+    expect.stringContaining("PLC connection refused"),
+  );
+});
+
 test("refetches the key once when the cached one fails", async () => {
   const stale = await fixedKey("old key");
   lib.resolveKey.mockResolvedValueOnce(stale.did());
