@@ -39,16 +39,25 @@ afterEach(async () => {
 
 test("resets and seeds before every publish and retains earlier configurations", async () => {
   const events: string[] = [];
+  const runIds: (string | undefined)[] = [];
+  const parentId = process.env.RUN_ID;
   vi.mocked(spawn).mockImplementation((_file, args) => {
+    runIds.push(process.env.RUN_ID);
     if (Array.isArray(args)) events.push(args[1]);
     return successfulStep();
   });
   vi.mocked(runPublish).mockImplementation(async () => {
+    runIds.push(process.env.RUN_ID);
     events.push("publish");
     return published;
   });
   const first = await runScenario("smoke", { runs: 2, config: "A0" });
   expect(events).toEqual(["reset", "up", "publish", "reset", "up", "publish"]);
+  expect(new Set(first.map((row) => row.runId)).size).toBe(2);
+  expect(runIds).toEqual(
+    first.flatMap((row) => [row.runId, row.runId, row.runId]),
+  );
+  expect(process.env.RUN_ID).toBe(parentId);
   expect(first.map((row) => row.run)).toEqual([1, 2]);
   const second = await runScenario("smoke", { runs: 1, config: "S1" });
   expect(second[0]).toMatchObject({

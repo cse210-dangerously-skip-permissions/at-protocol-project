@@ -4,3 +4,4 @@ export * from "./env.js";
 export * from "./keys.js";
 export * from "./types.js";
 export * from "./validate.js";
+export * from "./log.js";

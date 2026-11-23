@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { mkdir, readFile, rename, rmdir, writeFile } from "node:fs/promises";
@@ -12,6 +13,7 @@ const configs = ["A0", "A1", "S0", "S1"] as const;
 export interface RunContext {
   config: (typeof configs)[number];
   run: number;
+  runId: string;
 }
 
 /** Measurements produced by one scenario. */
@@ -99,9 +101,12 @@ export async function runScenario(
       { cause: error },
     );
   }
+  const previousRunId = process.env.RUN_ID;
   try {
     const completed: ResultRow[] = [];
     for (let run = 1; run <= opts.runs; run++) {
+      const runId = randomUUID();
+      process.env.RUN_ID = runId;
       const startedAt = new Date().toISOString();
       const dir = join("results", startedAt.slice(0, 10));
       const path = join(dir, `${name}.json`);
@@ -114,7 +119,7 @@ export async function runScenario(
         const [code] = await once(child, "close");
         if (code !== 0) throw new Error(`stack:${step} failed (exit ${code})`);
       }
-      const ctx = { run, config: opts.config };
+      const ctx = { run, runId, config: opts.config };
       const outcome = await scenario.run(ctx);
       const row = { scenario: name, ...ctx, startedAt, outcome };
       await mkdir(dir, { recursive: true });
@@ -127,6 +132,8 @@ export async function runScenario(
     }
     return completed;
   } finally {
+    if (previousRunId === undefined) delete process.env.RUN_ID;
+    else process.env.RUN_ID = previousRunId;
     await rmdir(lock);
   }
 }

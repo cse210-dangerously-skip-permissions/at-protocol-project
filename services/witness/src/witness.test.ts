@@ -152,8 +152,21 @@ test("logs and stores nothing when one byte of the frame is changed", async () =
 
   expect(added).toEqual([]);
   expect(console.error).toHaveBeenCalledWith(
-    `witness: not stored did=${DID} rev=${String(frame.rev)} stream=${STREAM}:`,
-    expect.any(String),
+    expect.stringContaining(
+      `witness: not stored did=${DID} rev=${String(frame.rev)} stream=${STREAM}:`,
+    ),
+  );
+});
+
+test("logs the underlying cause when a signing key lookup fails", async () => {
+  lib.resolveKey.mockRejectedValueOnce(
+    new Error("fetch failed", { cause: new Error("PLC connection refused") }),
+  );
+
+  await run(frame);
+
+  expect(console.error).toHaveBeenCalledWith(
+    expect.stringContaining("PLC connection refused"),
   );
 });
 
@@ -177,7 +190,6 @@ test("ignores other DIDs and skips malformed frames", async () => {
 
   expect(added).toHaveLength(1);
   expect(console.error).toHaveBeenCalledWith(
-    "witness: skipped frame:",
-    expect.any(Error),
+    expect.stringContaining("witness: skipped frame:"),
   );
 });

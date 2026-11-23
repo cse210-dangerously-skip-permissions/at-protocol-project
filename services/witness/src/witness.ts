@@ -1,7 +1,12 @@
+import { inspect } from "node:util";
 import { IdResolver, MemoryCache } from "@atproto/identity";
 import { Subscription } from "@atproto/xrpc-server";
 import { checkCheckpoint } from "@trustlab/auditor";
-import type { LocalEnv, WitnessCheckpoint } from "@trustlab/contracts";
+import {
+  log,
+  type LocalEnv,
+  type WitnessCheckpoint,
+} from "@trustlab/contracts";
 import { type HeadCommit, readHeadCommit, toCheckpoint } from "./capture.js";
 
 /** Where checkpoints go. #48's `CheckpointStore` fits this. */
@@ -87,8 +92,10 @@ export function startWitness(opts: WitnessOptions): RunningWitness {
     }
     if (!check.valid) throw new Error(check.problem);
     const result = store.add(cp);
-    console.log(
+    log(
+      "witness",
       `witness: ${result} did=${cp.did} stream=${cp.stream} seq=${cp.seq} rev=${cp.rev}`,
+      console.log,
     );
   }
 
@@ -99,7 +106,11 @@ export function startWitness(opts: WitnessOptions): RunningWitness {
         try {
           commit = readHeadCommit(msg, allow);
         } catch (error) {
-          console.error("witness: skipped frame:", error);
+          log(
+            "witness",
+            `witness: skipped frame: ${inspect(error)}`,
+            console.error,
+          );
           continue;
         }
         if (commit === null) continue;
@@ -107,15 +118,21 @@ export function startWitness(opts: WitnessOptions): RunningWitness {
           try {
             await capture(commit, head);
           } catch (error) {
-            console.error(
-              `witness: not stored did=${commit.repo} rev=${commit.rev} stream=${head.stream}:`,
-              error instanceof Error ? error.message : error,
+            log(
+              "witness",
+              `witness: not stored did=${commit.repo} rev=${commit.rev} stream=${head.stream}: ${inspect(error)}`,
+              console.error,
             );
           }
         }
       }
     } catch (error) {
-      if (!abort.signal.aborted) console.error("witness: subscription:", error);
+      if (!abort.signal.aborted)
+        log(
+          "witness",
+          `witness: subscription: ${inspect(error)}`,
+          console.error,
+        );
     }
   })();
 

@@ -133,7 +133,9 @@ test("logs each verified write with DID, record key, CID, and rev", async () => 
   await deliver(ALLOWED, 7, [eventCreate(ALLOWED, 1, "rev-a")]);
 
   expect(console.log).toHaveBeenCalledWith(
-    `verified create did=${ALLOWED} rkey=releases-000000000001 cid=cid-event-1 rev=rev-a`,
+    expect.stringContaining(
+      `verified create did=${ALLOWED} rkey=releases-000000000001 cid=cid-event-1 rev=rev-a`,
+    ),
   );
 });
 
@@ -148,7 +150,9 @@ test("logs a verified delete without a CID and keeps it out of the view", async 
   await deliver(ALLOWED, 9, [del]);
 
   expect(console.log).toHaveBeenCalledWith(
-    `verified delete did=${ALLOWED} rkey=releases-000000000001 cid=- rev=rev-d`,
+    expect.stringContaining(
+      `verified delete did=${ALLOWED} rkey=releases-000000000001 cid=- rev=rev-d`,
+    ),
   );
   expect(store.getEvents(ALLOWED, "releases")).toEqual([]);
   expect(store.getCheckpoint().cursor).toBe(9);
