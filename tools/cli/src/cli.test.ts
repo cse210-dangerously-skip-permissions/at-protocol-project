@@ -1,5 +1,11 @@
-import { expect, test } from "vitest";
+import { runScenario } from "@trustlab/harness";
+import { expect, test, vi } from "vitest";
 import { main } from "./cli.js";
+
+vi.mock("@trustlab/harness", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@trustlab/harness")>()),
+  runScenario: vi.fn(),
+}));
 
 /**
  * Run the CLI and collect what it printed.
@@ -66,10 +72,45 @@ test("unimplemented subcommands say so", async () => {
 
 test("demo checks its arguments before touching the stack", async () => {
   expect((await run("demo")).err).toContain("--scenario is required");
-  expect((await run("demo", "--scenario", "smoke", "--runs", "x")).code).toBe(
-    2,
-  );
+  for (const runs of ["x", "0"]) {
+    const { code, err } = await run(
+      "demo",
+      "--scenario",
+      "smoke",
+      "--runs",
+      runs,
+    );
+    expect(code).toBe(2);
+    expect(err).toContain("--runs needs a positive whole number");
+  }
   const bad = await run("demo", "--scenario", "smoke", "--config", "Z9");
   expect(bad.code).toBe(2);
   expect(bad.err).toContain("--config must be");
+});
+
+test("demo prints one line per run with the verdict kind", async () => {
+  vi.mocked(runScenario).mockResolvedValue([
+    {
+      scenario: "smoke",
+      run: 1,
+      runId: "run-1",
+      config: "A0",
+      startedAt: "2026-11-23T00:00:00.000Z",
+      outcome: { verdict: { verdict: "conflict", reason: "broken-link" } },
+    },
+    {
+      scenario: "smoke",
+      run: 2,
+      runId: "run-2",
+      config: "A0",
+      startedAt: "2026-11-23T00:00:01.000Z",
+      outcome: {},
+    },
+  ]);
+  const { code, out } = await run("demo", "--scenario", "smoke", "--runs", "2");
+  expect(code).toBe(0);
+  expect(out).toBe(
+    "demo smoke run=1 config=A0 verdict=conflict\n" +
+      "demo smoke run=2 config=A0 verdict=none",
+  );
 });

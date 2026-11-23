@@ -163,8 +163,8 @@ async function demo(argv: readonly string[], io: CliIo): Promise<number> {
     }
     if (values.scenario === undefined)
       throw new RangeError("--scenario is required");
-    if (!/^\d+$/.test(values.runs))
-      throw new RangeError("--runs needs a whole number");
+    if (!/^[1-9]\d*$/.test(values.runs))
+      throw new RangeError("--runs needs a positive whole number");
     scenario = values.scenario;
     runs = Number(values.runs);
     config = values.config;
@@ -181,7 +181,7 @@ async function demo(argv: readonly string[], io: CliIo): Promise<number> {
     const rows = await runScenario(scenario, { runs, config });
     for (const row of rows) {
       io.log(
-        `demo ${row.scenario} run=${row.run} config=${row.config} verdict=${row.outcome.verdict ?? "none"}`,
+        `demo ${row.scenario} run=${row.run} config=${row.config} verdict=${row.outcome.verdict?.verdict ?? "none"}`,
       );
     }
     return 0;
