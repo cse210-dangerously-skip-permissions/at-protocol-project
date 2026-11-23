@@ -1,13 +1,9 @@
-import { verifyCheckpoint } from "@trustlab/auditor";
 import type { WitnessCheckpoint } from "@trustlab/contracts";
 import { afterEach, expect, test, vi } from "vitest";
 import { Metrics, metricKeys } from "./metrics.js";
 
-vi.mock("@trustlab/auditor", () => ({ verifyCheckpoint: vi.fn() }));
-
 afterEach(() => {
   vi.useRealTimers();
-  vi.resetAllMocks();
 });
 
 /** A checkpoint whose proof decodes to `size` bytes; other fields are unused here. */
@@ -53,44 +49,115 @@ test("returns the timed value and records nothing when the operation throws", as
   expect(Object.keys(metrics.outcome().timingsMs)).toEqual(["x"]);
 });
 
-test("rejects a count that is not finite", () => {
+test("rejects a count or max that is not finite", () => {
   expect(() => new Metrics().count("n", Number.NaN)).toThrow("not finite");
+  expect(() => new Metrics().max("n", Infinity)).toThrow("not finite");
 });
 
-test("verifies checkpoints and records decoded proof bytes and validity", async () => {
-  vi.mocked(verifyCheckpoint)
-    .mockResolvedValueOnce(true)
-    .mockResolvedValueOnce(false);
+test("max keeps the largest value instead of adding", () => {
+  const metrics = new Metrics();
+  metrics.max("m", 2400);
+  metrics.max("m", 2400);
+  metrics.max("m", 1100);
+
+  expect(metrics.outcome().counts).toEqual({ m: 2400 });
+});
+
+test("names that exist on Object.prototype start at zero", () => {
+  const metrics = new Metrics();
+  metrics.count("constructor", 1);
+  metrics.count("toString", 2);
+
+  expect(metrics.outcome().counts).toEqual({ constructor: 1, toString: 2 });
+});
+
+test("verifies checkpoints with the given verifier and records proof bytes and validity", async () => {
+  vi.useFakeTimers({ toFake: ["performance"] });
+  const verify = vi
+    .fn<(cp: WitnessCheckpoint) => Promise<boolean>>()
+    .mockImplementationOnce(async () => {
+      vi.advanceTimersByTime(5);
+      return true;
+    })
+    .mockImplementationOnce(async () => {
+      vi.advanceTimersByTime(7);
+      return false;
+    });
   const metrics = new Metrics();
   const cps = [checkpoint(1100), checkpoint(2400)];
 
-  await expect(metrics.verifyCheckpoints(cps)).resolves.toEqual([true, false]);
+  await expect(metrics.verifyCheckpoints(cps, verify)).resolves.toEqual([
+    true,
+    false,
+  ]);
 
-  expect(verifyCheckpoint).toHaveBeenCalledTimes(2);
-  const { counts, timingsMs } = metrics.outcome();
-  expect(counts).toEqual({
+  expect(verify.mock.calls.map(([cp]) => cp)).toEqual(cps);
+  expect(metrics.outcome()).toEqual({
+    counts: {
+      checkpoints: 2,
+      checkpointsValid: 1,
+      proofBytesTotal: 3500,
+      proofBytesMax: 2400,
+    },
+    timingsMs: { verification: 12 },
+  });
+});
+
+test("a malformed checkpoint counts as not valid without reaching the verifier", async () => {
+  const verify = vi.fn(async () => true);
+  const metrics = new Metrics();
+  const bad = {
+    ...checkpoint(10),
+    proofCar: null,
+  } as unknown as WitnessCheckpoint;
+
+  await expect(
+    metrics.verifyCheckpoints([checkpoint(100), bad], verify),
+  ).resolves.toEqual([true, false]);
+
+  expect(verify).toHaveBeenCalledTimes(1);
+  expect(metrics.outcome().counts).toEqual({
     checkpoints: 2,
     checkpointsValid: 1,
-    proofBytesTotal: 3500,
-    proofBytesMax: 2400,
+    proofBytesTotal: 100,
+    proofBytesMax: 100,
   });
-  expect(timingsMs.verifyCheckpoint).toBeGreaterThanOrEqual(0);
 });
 
-test("records zero checkpoints without a verification timing", async () => {
+test("records nothing from verifyCheckpoints when the verifier throws", async () => {
+  const verify = vi
+    .fn<(cp: WitnessCheckpoint) => Promise<boolean>>()
+    .mockResolvedValueOnce(true)
+    .mockRejectedValueOnce(new Error("resolver down"));
   const metrics = new Metrics();
-  await metrics.verifyCheckpoints([]);
+
+  await expect(
+    metrics.verifyCheckpoints([checkpoint(100), checkpoint(200)], verify),
+  ).rejects.toThrow("resolver down");
+
+  expect(metrics.outcome()).toEqual({ counts: {}, timingsMs: {} });
+});
+
+test("an empty checkpoint list writes the same keys as zeros", async () => {
+  const metrics = new Metrics();
+  await metrics.verifyCheckpoints([], vi.fn());
 
   expect(metrics.outcome()).toEqual({
-    counts: { checkpoints: 0, checkpointsValid: 0 },
-    timingsMs: {},
+    counts: {
+      checkpoints: 0,
+      checkpointsValid: 0,
+      proofBytesTotal: 0,
+      proofBytesMax: 0,
+    },
+    timingsMs: { verification: 0 },
   });
 });
 
-test("outcome returns a snapshot", () => {
+test("outcome returns a snapshot", async () => {
   const metrics = new Metrics();
   const before = metrics.outcome();
   metrics.count("n", 1);
+  await metrics.time("t", async () => undefined);
 
-  expect(before.counts).toEqual({});
+  expect(before).toEqual({ counts: {}, timingsMs: {} });
 });
