@@ -28,7 +28,17 @@ Failures throw `SnapshotError`, whose `problem` says which step failed:
 
 Both default to the global `fetch`, which reaches the local network. `@atproto/identity`'s own default refuses localhost; pass a `fetch` to change either.
 
-The package returns plain data and does not import the consumer. #44 turns a `Snapshot` into the view.
+The package returns plain data and does not import the consumer.
+
+## Rebuild
+
+`planRebuild(snapshot)` (`src/rebuild.ts`) turns a snapshot into what the view should hold. It is pure. Each event's stream and seq come from its record, checked against the contract, never from the record key or a time, and the events come back ordered by stream, then seq.
+
+Gaps are reported, not fixed: for each stream, the seqs missing between 1 and its highest seq, as inclusive ranges. Events 1, 2, and 4 give `{ stream, missing: [{ from: 3, to: 3 }] }`. Ranges keep the result small even when a publisher signs an event at `MAX_SEQ`. The auditor decides what a gap means (#79).
+
+An event from another DID, or two events with the same stream and seq, throws: a verified snapshot never has either.
+
+The consumer writes the plan with `ConsumerStore.replaceRepo`, which replaces that DID's events and rev in one transaction (#45 wires the two together). A rebuild replaces the view: it matches what the publisher serves now.
 
 The integration test is `tests/integration/recovery.test.ts`. Run it with `npm run stack:up`, then `npm run test:integration`.
 
