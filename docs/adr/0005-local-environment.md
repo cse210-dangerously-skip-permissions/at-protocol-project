@@ -7,6 +7,8 @@
 
 Recovery tests need records and identities to survive restarts. Each experiment needs a clean starting state.
 
+Routine tests must run without posting to Bluesky or relying on its availability. CI should not need hosted account credentials.
+
 ## Decision
 
 Use the same Docker Compose stack for development, CI, and experiments. Run one personal data server (PDS) and one PostgreSQL-backed PLC directory on localhost. Pin the PDS image to `0.4.5051` and the PLC source to commit `29f1a70`. [Compose configuration](../../infra/compose.yaml)
