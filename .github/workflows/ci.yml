@@ -51,3 +51,14 @@ jobs:
           cache-to: type=gha,scope=plc,mode=max
       - run: npm run stack:up
       - run: npm run test:integration
+      # The story specs in e2e/ drive the command line against the same
+      # stack. With CI set, a spec that cannot reach the stack fails instead
+      # of skipping.
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-results
+          path: test-results/
+          retention-days: 7

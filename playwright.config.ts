@@ -11,6 +11,9 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 1 : 0,
+  // The stack-backed specs all write to the one seeded publisher repo, so
+  // CI runs them one at a time.
+  workers: process.env.CI ? 1 : undefined,
   reporter: process.env.CI ? [["github"], ["list"]] : "list",
   use: {
     trace: "retain-on-failure",
