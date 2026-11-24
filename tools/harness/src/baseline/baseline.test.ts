@@ -172,6 +172,45 @@ describe("appending", () => {
     expect(await reader.events(STREAM)).toEqual([]);
   });
 
+  test("publishWorkload stops if another writer moved the stream", async () => {
+    await publish(1);
+    const [payload] = makeWorkload(9, 1);
+    let raced = false;
+    const racing: BaselineClient = {
+      ...publisher,
+      append: async (stream, event) => {
+        if (!raced) {
+          raced = true;
+          await publisher.append(stream, {
+            kind: "release",
+            payload: payload!,
+            createdAt: workloadCreatedAt(9, 1),
+          });
+        }
+        return publisher.append(stream, event);
+      },
+    };
+
+    await expect(
+      publishWorkload(racing, { stream: STREAM, count: 2, seed: 1 }),
+    ).rejects.toThrow(/releases moved while publishing: expected seq 2, got 3/);
+  });
+
+  test("refuses to start with an empty publisher token", async () => {
+    await expect(startBaselineServer({ publisherToken: "" })).rejects.toThrow(
+      /publisherToken must not be empty/,
+    );
+  });
+
+  test("a request with no token is refused even for an empty expected token", async () => {
+    const response = await fetch(`${server.url}/streams/${STREAM}/events`, {
+      method: "POST",
+      headers: { authorization: "Bearer " },
+      body: "{}",
+    });
+    expect(response.status).toBe(401);
+  });
+
   test("needs the publisher token", async () => {
     const [payload] = makeWorkload(1, 1);
     const event = {
@@ -220,6 +259,22 @@ describe("the signed head", () => {
       await verifyHead(server.publicKey, { ...signed, sig: "not base64!" }),
     ).toBe(false);
     expect(await verifyHead("not-a-key", signed)).toBe(false);
+  });
+
+  test("the client rejects a head signed for another stream", async () => {
+    await publishWorkload(publisher, { stream: "other", count: 1, seed: 1 });
+    const forOther = await reader.head("other");
+    expect(await verifyHead(server.publicKey, forOther)).toBe(true);
+
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = async () => Response.json(forOther);
+    try {
+      await expect(reader.head(STREAM)).rejects.toThrow(
+        /asked for the head of releases, got one for other/,
+      );
+    } finally {
+      globalThis.fetch = realFetch;
+    }
   });
 
   test("is 404 for a stream with no events", async () => {
@@ -358,6 +413,23 @@ describe("tamper operations, mirroring the AT tools", () => {
     expect(edited.payload.checksum).not.toBe(original.payload.checksum);
   });
 
+  test("refuses a tamper AT could not make in one commit", async () => {
+    await publish(201);
+    const before = await cids();
+    const limit = /needs 20[12] writes, and one commit takes at most 200/;
+
+    // 201 events plus the head, and 200 events plus the head.
+    await expect(publisher.rewrite(STREAM, 1)).rejects.toThrow(limit);
+    await expect(publisher.rewrite(STREAM, 2)).rejects.toThrow(limit);
+    // 200 deletes plus the head.
+    await expect(publisher.truncate(STREAM, 1)).rejects.toThrow(limit);
+    expect(await cids()).toEqual(before);
+
+    // Exactly 200 writes is allowed, as on AT.
+    expect((await publisher.rewrite(STREAM, 3)).events).toHaveLength(199);
+    expect((await publisher.truncate(STREAM, 2)).head?.seq).toBe(2);
+  });
+
   test("rejects a seq the stream does not have, changing nothing", async () => {
     await publish(3);
     const before = await cids();
@@ -380,6 +452,41 @@ describe("tamper operations, mirroring the AT tools", () => {
     expect(await statusOf(reader.rewrite(STREAM, 2))).toBe(401);
     expect(await statusOf(reader.truncate(STREAM, 2))).toBe(401);
     expect(await cids()).toEqual(before);
+  });
+});
+
+describe("closing", () => {
+  test("close can be called twice", async () => {
+    const extra = await startBaselineServer({ publisherToken: TOKEN });
+    await extra.close();
+    await expect(extra.close()).resolves.toBeUndefined();
+  });
+
+  test("appends in flight when close is called never hit a closed database", async () => {
+    const extra = await startBaselineServer({ publisherToken: TOKEN });
+    const client = baselineClient(extra.url, TOKEN);
+    const [payload] = makeWorkload(1, 1);
+    const appends = Array.from({ length: 8 }, () =>
+      client
+        .append(STREAM, {
+          kind: "release",
+          payload: payload!,
+          createdAt: workloadCreatedAt(1, 1),
+        })
+        .then(
+          () => "stored",
+          () => "refused",
+        ),
+    );
+    // Let some requests reach the server before it closes.
+    await new Promise((resolve) => setTimeout(resolve, 5));
+
+    await extra.close();
+
+    // Each one was either stored before the close or refused; none crashed.
+    for (const outcome of await Promise.all(appends)) {
+      expect(["stored", "refused"]).toContain(outcome);
+    }
   });
 });
 

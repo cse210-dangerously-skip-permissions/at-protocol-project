@@ -7,7 +7,11 @@ import {
   isStreamName,
   parseEventRecord,
 } from "@trustlab/contracts";
-import { recordCid, withChangedPayload } from "@trustlab/publisher";
+import {
+  MAX_TAMPER_WRITES,
+  recordCid,
+  withChangedPayload,
+} from "@trustlab/publisher";
 import { type SignedHead, signHead } from "./head.js";
 import type { BaselineEvent, BaselineStore } from "./store.js";
 
@@ -20,11 +24,12 @@ import type { BaselineEvent, BaselineStore } from "./store.js";
 /** A request the baseline cannot serve, with the HTTP status to answer. */
 export class BaselineError extends Error {
   /**
-   * @param status - HTTP status: 400 for bad input, 404 for something missing.
+   * @param status - HTTP status: 400 for bad input, 404 for something
+   *   missing, 503 once the baseline is closing.
    * @param message - What is wrong.
    */
   constructor(
-    readonly status: 400 | 404,
+    readonly status: 400 | 404 | 503,
     message: string,
   ) {
     super(message);
@@ -51,6 +56,7 @@ export class Baseline {
   readonly #store: BaselineStore;
   readonly #keypair: Secp256k1Keypair;
   #queue: Promise<unknown> = Promise.resolve();
+  #closing = false;
 
   /**
    * @param store - Where events and heads are kept.
@@ -59,6 +65,17 @@ export class Baseline {
   constructor(store: BaselineStore, keypair: Secp256k1Keypair) {
     this.#store = store;
     this.#keypair = keypair;
+  }
+
+  /**
+   * Refuse new writes and wait for the ones already queued, so the store
+   * can be closed with nothing in flight.
+   *
+   * @returns A promise that settles when the last queued write has finished.
+   */
+  async drain(): Promise<void> {
+    this.#closing = true;
+    await this.#queue;
   }
 
   /** The public key consumers are configured with, as a `did:key`. */
@@ -171,13 +188,17 @@ export class Baseline {
    * @param stream - Stream name.
    * @param from - The first seq to rewrite.
    * @returns The new CID of every rewritten event, and the new head.
-   * @throws BaselineError 404 if the stream has no event at `from`.
+   * @throws BaselineError 404 if the stream has no event at `from`, 400 if
+   *   the range is longer than one AT commit could carry.
    */
   rewrite(stream: string, from: number): Promise<BaselineTampered> {
     return this.#serial(async () => {
       const put: BaselineEvent[] = [];
       let prevCid: string | undefined;
-      for (const event of this.#eventsFrom(stream, from)) {
+      const events = this.#eventsFrom(stream, from);
+      // Every event plus the head, as in the one commit AT makes.
+      assertWrites(events.length + 1);
+      for (const event of events) {
         const changed = withChangedPayload(event.record);
         const record: EventRecord =
           prevCid === undefined
@@ -204,7 +225,8 @@ export class Baseline {
    * @param to - The seq of the last event to keep. Must be below the head.
    * @returns The new head. `events` is empty.
    * @throws BaselineError 404 if the stream has no event at `to`, 400 if
-   *   `to` is the head already.
+   *   `to` is the head already or there are more events to delete than one
+   *   AT commit could carry.
    */
   truncate(stream: string, to: number): Promise<BaselineTampered> {
     return this.#serial(async () => {
@@ -215,6 +237,8 @@ export class Baseline {
           `truncate needs a seq below the head (${to}), got ${to}`,
         );
       }
+      // Every deleted event plus the head, as in the one commit AT makes.
+      assertWrites(events.length);
       const head = { seq: to, eventCid: (events[0] as BaselineEvent).cid };
       this.#store.write(stream, {
         deleteAfter: to,
@@ -250,9 +274,28 @@ export class Baseline {
    * @returns What the write returned.
    */
   #serial<T>(write: () => Promise<T>): Promise<T> {
+    if (this.#closing) {
+      return Promise.reject(new BaselineError(503, "the baseline is closing"));
+    }
     const result = this.#queue.then(write);
     this.#queue = result.catch(() => undefined);
     return result;
+  }
+}
+
+/**
+ * Refuse a tamper that AT could not make in one commit, so the same tamper
+ * succeeds or fails the same way in both setups.
+ *
+ * @param writes - How many records the tamper touches, the head included.
+ * @throws BaselineError 400 if that is more than `MAX_TAMPER_WRITES`.
+ */
+function assertWrites(writes: number): void {
+  if (writes > MAX_TAMPER_WRITES) {
+    throw new BaselineError(
+      400,
+      `this needs ${writes} writes, and one commit takes at most ${MAX_TAMPER_WRITES}`,
+    );
   }
 }
 

@@ -16,7 +16,7 @@ const MAX_BODY_BYTES = 64 * 1024;
 export interface BaselineServerOptions {
   /**
    * The secret the publisher sends as `Authorization: Bearer <token>`.
-   * Appending and tampering need it; reading does not.
+   * Appending and tampering need it; reading does not. Must not be empty.
    */
   publisherToken: string;
   /** Database file path. Defaults to `:memory:`. */
@@ -39,7 +39,7 @@ export interface RunningBaseline {
    * DID-based AT setup is compared against.
    */
   publicKey: string;
-  /** Stop listening and close the database. */
+  /** Stop listening and close the database. Safe to call more than once. */
   close(): Promise<void>;
 }
 
@@ -59,10 +59,15 @@ export interface RunningBaseline {
  * @param options - The publisher token, and optionally the database, the
  *   address, and the signing key.
  * @returns The server's URL and public key, and a function to stop it.
+ * @throws RangeError if the publisher token is empty, which would let
+ *   anyone write.
  */
 export async function startBaselineServer(
   options: BaselineServerOptions,
 ): Promise<RunningBaseline> {
+  if (options.publisherToken === "") {
+    throw new RangeError("publisherToken must not be empty");
+  }
   const store = new BaselineStore(options.dbPath ?? ":memory:");
   const keypair = options.keypair ?? (await Secp256k1Keypair.create());
   const baseline = new Baseline(store, keypair);
@@ -88,18 +93,21 @@ export async function startBaselineServer(
   });
   const { port } = server.address() as AddressInfo;
 
+  let closed: Promise<void> | undefined;
   return {
     url: `http://${host}:${port}`,
     publicKey: baseline.publicKey,
+    // Closing twice returns the first call's promise. The store is closed
+    // only after the last queued write, so none lands on a closed database.
     close: () =>
-      new Promise((resolve, reject) => {
-        server.closeAllConnections();
-        server.close((error) => {
-          store.close();
-          if (error) reject(error);
-          else resolve();
+      (closed ??= (async () => {
+        await new Promise<void>((resolve, reject) => {
+          server.close((error) => (error ? reject(error) : resolve()));
+          server.closeAllConnections();
         });
-      }),
+        await baseline.drain().catch(() => undefined);
+        store.close();
+      })()),
   };
 }
 
@@ -191,10 +199,15 @@ async function handle(
  * @throws HttpError 401 if the token is missing or wrong.
  */
 function authorize(token: Buffer, req: IncomingMessage): void {
+  // An empty token never authorizes, whatever the server was started with.
   const given = Buffer.from(
     /^Bearer (.+)$/.exec(req.headers.authorization ?? "")?.[1] ?? "",
   );
-  if (given.length !== token.length || !timingSafeEqual(given, token)) {
+  if (
+    given.length === 0 ||
+    given.length !== token.length ||
+    !timingSafeEqual(given, token)
+  ) {
     throw new HttpError(401, "publisher token required");
   }
 }

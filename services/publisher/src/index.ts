@@ -27,6 +27,7 @@ export {
   type AmendOptions,
 } from "./amend.js";
 export {
+  MAX_TAMPER_WRITES,
   runTamper,
   TamperConflictError,
   tamperEdit,

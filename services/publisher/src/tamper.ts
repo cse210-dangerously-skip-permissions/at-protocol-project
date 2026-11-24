@@ -31,8 +31,11 @@ import {
 // call is guarded by `swapCommit`, so a publish that lands while the tool is
 // reading makes it fail with nothing written.
 
-/** The most writes the PDS takes in one `applyWrites`. */
-const MAX_WRITES = 200;
+/**
+ * The most writes one tamper may make: what the PDS takes in one
+ * `applyWrites`. The S0 baseline applies the same limit (#83).
+ */
+export const MAX_TAMPER_WRITES = 200;
 
 /** What a tamper tool changed. */
 export interface Tampered {
@@ -229,9 +232,9 @@ async function commitWrites(
   swapCommit: string,
   writes: TamperWrite[],
 ): Promise<{ commitCid: string; rev: string }> {
-  if (writes.length > MAX_WRITES) {
+  if (writes.length > MAX_TAMPER_WRITES) {
     throw new RangeError(
-      `this needs ${writes.length} writes, and one commit takes at most ${MAX_WRITES}`,
+      `this needs ${writes.length} writes, and one commit takes at most ${MAX_TAMPER_WRITES}`,
     );
   }
   let data;

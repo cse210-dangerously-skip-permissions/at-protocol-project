@@ -47,8 +47,8 @@ await verifyHead(server.publicKey, signed); // true
 
 - **Bootstrap.** A consumer is given the URL and `server.publicKey` (a `did:key`). The key is not served over HTTP: configuring it by hand is the step the DID-based AT setup replaces.
 - **Signature.** `sig` is the base64 secp256k1 signature over `headBytes(head)`: the UTF-8 JSON of `stream`, `seq`, `eventCid` in that order. `verifyHead(publicKey, signed)` checks it.
-- **Publisher only.** `POST`, `PUT`, and `DELETE` need `Authorization: Bearer <publisherToken>`. Reads need nothing.
-- **Tampers mirror #65.** `edit` changes one payload and leaves the head alone. `rewrite` changes every event from `:seq` to the head, relinks them, and re-signs the head. `DELETE` on seq N is `tamper truncate --to N-1`: the head is re-signed at N-1. The payload change is the publisher's `withChangedPayload`, so a tampered event has the same CID on S0 as on AT.
-- **One change at a time.** Writes are queued and each is one SQLite transaction, like one AT commit, so appends never reuse a seq and a reader never sees a tamper halfway.
+- **Publisher only.** `POST`, `PUT`, and `DELETE` need `Authorization: Bearer <publisherToken>`. Reads need nothing. The server refuses to start with an empty token.
+- **Tampers mirror #65.** `edit` changes one payload and leaves the head alone. `rewrite` changes every event from `:seq` to the head, relinks them, and re-signs the head. `DELETE` on seq N is `tamper truncate --to N-1`: the head is re-signed at N-1. The payload change is the publisher's `withChangedPayload`, so a tampered event has the same CID on S0 as on AT. A rewrite or truncate that touches more than `MAX_TAMPER_WRITES` (200) records, the head included, is refused with 400, because AT could not make it in one commit.
+- **One change at a time.** Writes are queued and each is one SQLite transaction, like one AT commit, so appends never reuse a seq and a reader never sees a tamper halfway. `close()` waits for queued writes and can be called twice.
 
 Storage is `node:sqlite` (`dbPath`, default in memory). `tests/integration/baseline.test.ts` runs the same workload and tampers on the PDS and on S0 and compares the CIDs.

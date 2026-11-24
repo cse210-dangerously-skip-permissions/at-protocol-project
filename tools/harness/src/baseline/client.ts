@@ -38,7 +38,10 @@ export class BaselineRequestError extends Error {
 export interface BaselineClient {
   /** Read a stream's events, checked against the event contract. */
   events(stream: string): Promise<BaselineEvent[]>;
-  /** Read a stream's signed head. The signature is not checked here. */
+  /**
+   * Read a stream's signed head. Throws if the head is for another stream.
+   * The signature is not checked here; use `verifyHead`.
+   */
   head(stream: string): Promise<SignedHead>;
   /** Append the next event. Needs the publisher token. */
   append(
@@ -121,7 +124,17 @@ export function baselineClient(
       });
     },
     async head(stream) {
-      return parseSignedHead(await call("GET", `/streams/${stream}/head`));
+      const signed = parseSignedHead(
+        await call("GET", `/streams/${stream}/head`),
+      );
+      // The signature covers the stream name, so a head signed for another
+      // stream must not be taken as this one's.
+      if (signed.head.stream !== stream) {
+        throw new TypeError(
+          `asked for the head of ${stream}, got one for ${signed.head.stream}`,
+        );
+      }
+      return signed;
     },
     async append(stream, event) {
       return (await call("POST", events(stream), event)) as {
@@ -156,6 +169,7 @@ export function baselineClient(
  * @param client - A client with the publisher token.
  * @param args - Stream, how many more events, and the workload seed.
  * @returns The seq and CID of each event published, in order.
+ * @throws Error if another writer appended to the stream in between.
  */
 export async function publishWorkload(
   client: BaselineClient,
@@ -166,13 +180,21 @@ export async function publishWorkload(
   const payloads = makeWorkload(args.seed, start + args.count).slice(start);
   const published: { seq: number; cid: string }[] = [];
   for (const [index, payload] of payloads.entries()) {
-    published.push(
-      await client.append(args.stream, {
-        kind: "release",
-        payload,
-        createdAt: workloadCreatedAt(args.seed, start + index + 1),
-      }),
-    );
+    const seq = start + index + 1;
+    const event = await client.append(args.stream, {
+      kind: "release",
+      payload,
+      createdAt: workloadCreatedAt(args.seed, seq),
+    });
+    // The payload and time were picked for `seq`. If something else appended
+    // in between, the server gave this event another seq and the stream no
+    // longer matches the AT workload, so stop, as `runPublish` does.
+    if (event.seq !== seq) {
+      throw new Error(
+        `${args.stream} moved while publishing: expected seq ${seq}, got ${event.seq}`,
+      );
+    }
+    published.push(event);
   }
   return published;
 }
