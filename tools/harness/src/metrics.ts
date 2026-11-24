@@ -1,3 +1,4 @@
+import { verifyCheckpoint } from "@trustlab/auditor";
 import { parseWitnessCheckpoint } from "@trustlab/contracts";
 import type { WitnessCheckpoint } from "@trustlab/contracts";
 import type { ScenarioOutcome } from "./runner.js";
@@ -32,11 +33,22 @@ export const metricKeys = {
 /**
  * Checks one checkpoint and says whether it holds. Pass one that checks the
  * signature against the publisher's key from their DID document, not the
- * `signingKey` the witness supplies (ADR-003 rule 3), e.g.
- * `(cp) => verifyCheckpoint({ ...cp, signingKey: didDocKey })`, so the counts
- * agree with the auditor's verdict.
+ * `signingKey` the witness supplies (ADR-003 rule 3), so the counts agree with
+ * the auditor's verdict. `pinnedVerifier` builds one.
  */
 export type CheckpointVerifier = (cp: WitnessCheckpoint) => Promise<boolean>;
+
+/**
+ * A `CheckpointVerifier` that ignores the witness's `signingKey` and checks
+ * every checkpoint against `didDocKey` instead (ADR-003 rule 3).
+ *
+ * @param didDocKey - The publisher's signing key, as a `did:key`, read from
+ *   their DID document.
+ */
+export const pinnedVerifier =
+  (didDocKey: string): CheckpointVerifier =>
+  (cp) =>
+    verifyCheckpoint({ ...cp, signingKey: didDocKey });
 
 /**
  * Collects one run's measurements in the shape `ScenarioOutcome` stores.

@@ -1,6 +1,11 @@
 import type { WitnessCheckpoint } from "@trustlab/contracts";
 import { afterEach, expect, test, vi } from "vitest";
-import { Metrics, metricKeys } from "./metrics.js";
+import { Metrics, metricKeys, pinnedVerifier } from "./metrics.js";
+
+const { verifyCheckpoint } = vi.hoisted(() => ({
+  verifyCheckpoint: vi.fn(async () => true),
+}));
+vi.mock("@trustlab/auditor", () => ({ verifyCheckpoint }));
 
 afterEach(() => {
   vi.useRealTimers();
@@ -160,4 +165,15 @@ test("outcome returns a snapshot", async () => {
   await metrics.time("t", async () => undefined);
 
   expect(before).toEqual({ counts: {}, timingsMs: {} });
+});
+
+test("pinnedVerifier checks against the DID document key, not the witness's", async () => {
+  const cp = checkpoint(1);
+
+  await expect(pinnedVerifier("did:key:doc")(cp)).resolves.toBe(true);
+
+  expect(verifyCheckpoint).toHaveBeenCalledWith({
+    ...cp,
+    signingKey: "did:key:doc",
+  });
 });
