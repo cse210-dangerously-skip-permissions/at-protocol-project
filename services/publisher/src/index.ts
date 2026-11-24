@@ -5,6 +5,7 @@ export {
   publishEvent,
   PublishConflictError,
   readHead,
+  recordCid,
   type PublisherSession,
   type PublishInput,
   type Published,
@@ -26,11 +27,13 @@ export {
   type AmendOptions,
 } from "./amend.js";
 export {
+  MAX_TAMPER_WRITES,
   runTamper,
   TamperConflictError,
   tamperEdit,
   tamperRewrite,
   tamperTruncate,
+  withChangedPayload,
   type TamperArgs,
   type Tampered,
   type TamperOptions,
