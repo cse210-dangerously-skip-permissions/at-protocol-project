@@ -113,6 +113,32 @@ async function publisher(...args: string[]): Promise<string[]> {
 }
 
 /**
+ * Run `tamper edit`, again if another spec's commit landed while it was
+ * reading: the tool then writes nothing and says to run it again.
+ *
+ * @param stream - Stream to tamper with.
+ * @param seq - The seq of the event to edit.
+ * @returns The lines the tool printed.
+ */
+async function tamperEdit(stream: string, seq: number): Promise<string[]> {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return await publisher(
+        "tamper",
+        "edit",
+        "--stream",
+        stream,
+        "--seq",
+        String(seq),
+      );
+    } catch (error) {
+      const stderr = String((error as { stderr?: unknown }).stderr);
+      if (attempt === 5 || !stderr.includes("nothing was written")) throw error;
+    }
+  }
+}
+
+/**
  * Publish seeded events and read back the CID of each.
  *
  * @param stream - Stream to publish to.
@@ -418,14 +444,7 @@ test("a consumer keeps the event it verified when the publisher edits it", async
       .toBe(3);
 
     // The tamper tool overwrites event 2 with a validly signed commit.
-    const [line] = await publisher(
-      "tamper",
-      "edit",
-      "--stream",
-      stream,
-      "--seq",
-      "2",
-    );
+    const [line] = await tamperEdit(stream, 2);
     const tamperedCid = /^tampered \S+ edit seq=2 cid=(\S+)$/.exec(
       line ?? "",
     )?.[1];

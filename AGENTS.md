@@ -36,7 +36,7 @@ npm run docs              # TypeDoc; warnings are errors
 npm run codegen           # after editing lexicons/: regenerates packages/contracts/src/generated/
 ```
 
-CI runs `lint`, `format:check`, `codegen:check`, `typecheck`, `test:coverage`, and `docs` on every PR. A separate job starts the Docker stack and runs integration tests on PRs to main and pushes to main. Run integration tests locally when you touch AT code. The pre-commit hook runs Prettier.
+CI runs `lint`, `format:check`, `codegen:check`, `typecheck`, `test:coverage`, and `docs` on every PR. A separate job starts the Docker stack and runs the integration tests and the e2e specs on PRs to main and pushes to main. Run integration tests locally when you touch AT code. The pre-commit hook runs Prettier.
 
 ## Tests
 
