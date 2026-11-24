@@ -100,7 +100,7 @@ describe("validateChain", () => {
   test.each<
     [string, readonly StoredEvent[], HeadRecord | undefined, string, number]
   >([
-    ["a missing genesis", [event(2)], undefined, "bad-genesis", 2],
+    ["a missing genesis", [event(2)], undefined, "bad-genesis", 1],
     [
       "a linked genesis",
       [event(1, { prevEventCid: "cid-0" })],
@@ -125,10 +125,38 @@ describe("validateChain", () => {
     ],
     [
       "a correction pointing forward",
+      chainWithAmendment("correct", 4),
+      undefined,
+      "bad-ref",
+      3,
+    ],
+    [
+      "a correction pointing at itself",
       chainWithAmendment("correct", 3),
       undefined,
       "bad-ref",
       3,
+    ],
+    [
+      "a withdrawal pointing forward",
+      chainWithAmendment("withdraw", 4),
+      undefined,
+      "bad-ref",
+      3,
+    ],
+    [
+      "a withdrawal pointing at seq 0",
+      chainWithAmendment("withdraw", 0),
+      undefined,
+      "bad-ref",
+      3,
+    ],
+    [
+      "a correction without a reference",
+      [event(1), event(2, { kind: "correct" })],
+      undefined,
+      "bad-ref",
+      2,
     ],
     [
       "a release with a reference",
@@ -146,12 +174,45 @@ describe("validateChain", () => {
       "head-mismatch",
       2,
     ],
+    [
+      "a head for another stream",
+      chain(2),
+      head(2, { stream: "other" }),
+      "head-mismatch",
+      2,
+    ],
   ])("rejects %s", (_name, events, currentHead, reason, seq) => {
     expect(validateChain(events, currentHead)).toEqual({
       verdict: "conflict",
       reason,
       evidence: { seq },
     });
+  });
+
+  test("reports a fork the same way in any order", () => {
+    const good = event(2);
+    const fork = { ...event(2, { prevEventCid: "cid-other" }), cid: "cid-2b" };
+    const expected = {
+      verdict: "conflict",
+      reason: "gap",
+      evidence: { seq: 2 },
+    };
+
+    expect(validateChain([event(1), good, fork])).toEqual(expected);
+    expect(validateChain([event(1), fork, good])).toEqual(expected);
+  });
+
+  test("reports a fork at genesis the same way in any order", () => {
+    const good = event(1);
+    const fork = { ...event(1, { prevEventCid: "cid-0" }), cid: "cid-1b" };
+    const expected = {
+      verdict: "conflict",
+      reason: "gap",
+      evidence: { seq: 1 },
+    };
+
+    expect(validateChain([good, fork, event(2)])).toEqual(expected);
+    expect(validateChain([fork, good, event(2)])).toEqual(expected);
   });
 
   test.each<[EventKind, number]>([
