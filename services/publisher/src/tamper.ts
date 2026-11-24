@@ -156,7 +156,7 @@ async function requireEvent(
  * @param event - The stored event.
  * @returns A copy with a changed checksum.
  */
-function withChangedPayload(event: EventRecord): EventRecord {
+export function withChangedPayload(event: EventRecord): EventRecord {
   const digest = createHash("sha256")
     .update(event.payload.checksum)
     .digest("hex");

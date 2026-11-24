@@ -64,7 +64,7 @@ Each tool sends one `applyWrites`, so a tamper is one commit: a consumer on the 
 - `tamperRewrite(session, stream, from)` rewrites every event from `from` to the head with a changed payload, then moves the head. The event at `from` keeps its link to the untouched event before it, and each later one links to the rewritten event before it. The chain is valid on its own; only the CIDs differ from what was published before.
 - `tamperTruncate(session, stream, to)` deletes the events after `to` and moves the head back to `to`.
 
-The changed checksum is `tampered:` plus the SHA-256 of the old one, so it has the same length however often an event is tampered with. Each function returns the new CIDs, the head it wrote, and the commit, and the command prints them: `tampered releases rewrite seq=3 cid=...` per event, or `tampered releases truncate to=3 cid=...`.
+The changed checksum (`withChangedPayload`, also used by the S0 baseline in #83) is `tampered:` plus the SHA-256 of the old one, so it has the same length however often an event is tampered with. Each function returns the new CIDs, the head it wrote, and the commit, and the command prints them: `tampered releases rewrite seq=3 cid=...` per event, or `tampered releases truncate to=3 cid=...`.
 
 Never run these against a stream you want to keep.
 
