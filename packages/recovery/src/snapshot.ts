@@ -1,5 +1,14 @@
 import { IdResolver } from "@atproto/identity";
-import { cborToLexRecord, verifyRepoCar } from "@atproto/repo";
+import {
+  type BlockMap,
+  cborToLexRecord,
+  def,
+  type Leaf,
+  MemoryBlockstore,
+  MST,
+  readCarWithRoot,
+  verifyRepo,
+} from "@atproto/repo";
 import {
   EVENT_NSID,
   HEAD_NSID,
@@ -36,15 +45,33 @@ export interface FetchSnapshotOptions {
    * reaches the local network, unlike `@atproto/identity`'s default.
    */
   fetch?: typeof globalThis.fetch;
+  /**
+   * How long the PDS has to send the whole repo, in milliseconds. Defaults
+   * to 30 seconds. The PLC has its own limit: `IdResolver` gives up after 3.
+   */
+  timeoutMs?: number;
+  /** The largest repo the PDS may send, in bytes. Defaults to 64 MiB. */
+  maxBytes?: number;
 }
+
+const DEFAULT_TIMEOUT_MS = 30_000;
+const DEFAULT_MAX_BYTES = 64 * 1024 * 1024;
+/** How much of an error response to read, for the message. */
+const ERROR_BODY_BYTES = 1024;
 
 /** Which step of fetching a snapshot failed. */
 export type SnapshotProblem =
-  /** The PDS could not be reached, or `getRepo` returned an error. */
+  /**
+   * The PDS could not be reached, `getRepo` returned an error, or the repo
+   * did not arrive in time or was too large.
+   */
   | "pds-unreachable"
   /** The PLC could not be reached, or gave no DID document or key. */
   | "did-unresolved"
-  /** The repo failed verification: a bad block, DID, or signature. */
+  /**
+   * The repo failed verification: a bad block, DID, or signature, a missing
+   * or malformed record, or MST keys that repeat or are out of order.
+   */
   | "invalid-repo";
 
 /** Thrown when a snapshot cannot be fetched or does not verify. */
@@ -79,7 +106,12 @@ export async function fetchSnapshot(
   opts: FetchSnapshotOptions,
 ): Promise<Snapshot> {
   const fetch = opts.fetch ?? globalThis.fetch;
-  const car = await downloadRepo(fetch, opts.pdsUrl, opts.did);
+  const car = await downloadRepo(fetch, {
+    pdsUrl: opts.pdsUrl,
+    did: opts.did,
+    timeoutMs: opts.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+    maxBytes: opts.maxBytes ?? DEFAULT_MAX_BYTES,
+  });
   const signingKey = await resolveSigningKey(fetch, opts.plcUrl, opts.did);
   return verifySnapshot(car, opts.did, signingKey);
 }
@@ -87,16 +119,20 @@ export async function fetchSnapshot(
 /**
  * Verify a repo CAR offline and extract our records from it.
  *
- * `verifyRepoCar` checks every block against its CID, that the commit is for
+ * `verifyRepo` checks every block against its CID, that the commit is for
  * `did` and signed by `signingKey`, and that every record block is present.
- * Records outside `dev.trustlab.event` and `dev.trustlab.head` are left out;
- * ours are checked against the contract.
+ * It does not check that the MST's keys are sorted and unique, so this
+ * function walks the tree and does: with a key twice, a full walk and a key
+ * lookup (which proofs use) would return different records for the same
+ * signed commit. Records outside `dev.trustlab.event` and `dev.trustlab.head`
+ * are left out; ours are checked against the contract.
  *
  * @param car - The repo, as `getRepo` returns it.
  * @param did - The DID the repo must belong to.
  * @param signingKey - The key the commit must be signed with, as a `did:key`.
  * @returns The snapshot.
- * @throws SnapshotError with `invalid-repo` if the repo does not verify.
+ * @throws SnapshotError with `did-unresolved` if `did` or `signingKey` is
+ *   missing, or `invalid-repo` if the repo does not verify.
  * @throws ContractError if a signed record in our collections breaks the contract.
  */
 export async function verifySnapshot(
@@ -104,9 +140,25 @@ export async function verifySnapshot(
   did: string,
   signingKey: string,
 ): Promise<Snapshot> {
-  let verified: Awaited<ReturnType<typeof verifyRepoCar>>;
+  // `verifyRepo` silently skips the DID or signature check when given
+  // undefined, which a JavaScript caller can pass despite the types.
+  if (!isNonEmptyString(did) || !isNonEmptyString(signingKey)) {
+    throw new SnapshotError(
+      "did-unresolved",
+      "verifySnapshot needs the repo's DID and signing key",
+    );
+  }
+
+  let blocks: BlockMap;
+  let commit: Awaited<ReturnType<typeof verifyRepo>>["commit"];
+  let leaves: Leaf[];
   try {
-    verified = await verifyRepoCar(car, did, signingKey);
+    const parsed = await readCarWithRoot(car);
+    blocks = parsed.blocks;
+    ({ commit } = await verifyRepo(blocks, parsed.root, did, signingKey));
+    const storage = new MemoryBlockstore(blocks);
+    const { data } = await storage.readObj(parsed.root, def.commit);
+    leaves = await MST.load(storage, data).leaves();
   } catch (error) {
     throw new SnapshotError(
       "invalid-repo",
@@ -114,38 +166,60 @@ export async function verifySnapshot(
       error,
     );
   }
-  const { creates, commit } = verified;
 
   const events: StoredEvent[] = [];
-  const head: Record<string, HeadRecord> = {};
-  // `creates` is in MST key order. An event's key is `<stream>-<12-digit seq>`,
-  // and `-` sorts before every character a stream name can hold, so the
-  // events come out ordered by stream, then seq, with no sort.
-  for (const create of creates) {
-    if (create.collection !== EVENT_NSID && create.collection !== HEAD_NSID) {
-      continue;
+  // No prototype, so a stream named `constructor` is not already present.
+  const head: Record<string, HeadRecord> = Object.create(null);
+  let previousKey: string | undefined;
+  for (const leaf of leaves) {
+    // Lookups compare keys the same way, so after this check a lookup finds
+    // exactly the record the walk does.
+    if (previousKey !== undefined && leaf.key <= previousKey) {
+      throw new SnapshotError(
+        "invalid-repo",
+        `the repo for ${did} has MST keys that repeat or are out of order: ${leaf.key} after ${previousKey}`,
+      );
     }
-    // verifyRepoCar fails if a record block is missing, so this is a guard.
-    const bytes = commit.newBlocks.get(create.cid);
+    previousKey = leaf.key;
+
+    const slash = leaf.key.indexOf("/");
+    const collection = leaf.key.slice(0, slash);
+    const rkey = leaf.key.slice(slash + 1);
+    if (collection !== EVENT_NSID && collection !== HEAD_NSID) continue;
+
+    // verifyRepo fails if a record block is missing, so this is a guard.
+    const bytes = blocks.get(leaf.value);
     if (bytes === undefined) {
       throw new SnapshotError(
         "invalid-repo",
-        `the repo for ${did} has no block for ${create.collection}/${create.rkey}`,
+        `the repo for ${did} has no block for ${leaf.key}`,
       );
     }
-    const value = cborToLexRecord(bytes);
-    if (create.collection === EVENT_NSID) {
-      const record = parseEventRecord(value, create.rkey);
+    let value: unknown;
+    try {
+      value = cborToLexRecord(bytes);
+    } catch (error) {
+      throw new SnapshotError(
+        "invalid-repo",
+        `the repo for ${did} holds ${leaf.key}, which is not a record: ${message(error)}`,
+        error,
+      );
+    }
+    // The walk is in key order, checked above. An event's key is
+    // `<stream>-<12-digit seq>`, and `-` sorts before every character a
+    // stream name can hold, so events come out by stream, then seq.
+    if (collection === EVENT_NSID) {
+      const record = parseEventRecord(value, rkey);
       events.push({
         did,
         stream: record.stream,
         seq: record.seq,
-        rkey: create.rkey,
-        cid: create.cid.toString(),
+        rkey,
+        cid: leaf.value.toString(),
         record,
       });
     } else {
-      const record = parseHeadRecord(value, create.rkey);
+      const record = parseHeadRecord(value, rkey);
       head[record.stream] = record;
     }
   }
@@ -161,37 +235,97 @@ export async function verifySnapshot(
 /**
  * Fetch a repo's CAR from its PDS.
  *
+ * The PDS is the party we do not trust, so the whole download has a deadline
+ * and a size limit: one that stalls or sends without end cannot hang the
+ * caller or run it out of memory.
+ *
  * @param fetch - The fetch to use.
- * @param pdsUrl - The PDS.
- * @param did - The repo.
+ * @param opts - The PDS, the repo, the deadline, and the size limit.
  * @returns The CAR bytes.
  * @throws SnapshotError with `pds-unreachable`.
  */
 async function downloadRepo(
   fetch: typeof globalThis.fetch,
-  pdsUrl: string,
-  did: string,
+  opts: { pdsUrl: string; did: string; timeoutMs: number; maxBytes: number },
 ): Promise<Uint8Array> {
-  const url = new URL("/xrpc/com.atproto.sync.getRepo", pdsUrl);
-  url.searchParams.set("did", did);
-  let response: Response;
+  const { pdsUrl, did } = opts;
+  const signal = AbortSignal.timeout(opts.timeoutMs);
   try {
-    response = await fetch(url);
+    const url = new URL("/xrpc/com.atproto.sync.getRepo", pdsUrl);
+    url.searchParams.set("did", did);
+    const response = await fetch(url, { signal });
+    if (!response.ok) {
+      const body = await readBody(response, ERROR_BODY_BYTES, signal).then(
+        (bytes) => new TextDecoder().decode(bytes),
+        () => "",
+      );
+      throw new SnapshotError(
+        "pds-unreachable",
+        `getRepo returned ${response.status} for ${did}: ${body.slice(0, 200)}`,
+      );
+    }
+    return await readBody(response, opts.maxBytes, signal);
   } catch (error) {
+    if (error instanceof SnapshotError) throw error;
     throw new SnapshotError(
       "pds-unreachable",
-      `could not reach ${pdsUrl}: ${message(error)}`,
+      `could not download the repo for ${did} from ${pdsUrl}: ${message(error)}`,
       error,
     );
   }
-  if (!response.ok) {
-    const body = await response.text().catch(() => "");
-    throw new SnapshotError(
-      "pds-unreachable",
-      `getRepo returned ${response.status} for ${did}: ${body.slice(0, 200)}`,
-    );
+}
+
+/**
+ * Read a response body, giving up when `signal` aborts or the body passes
+ * `maxBytes`.
+ *
+ * @param response - The response.
+ * @param maxBytes - The most bytes to accept.
+ * @param signal - Aborts the read.
+ * @returns The body.
+ * @throws SnapshotError with `pds-unreachable` if the body is too large.
+ * @throws The abort reason, or the stream's own error.
+ */
+async function readBody(
+  response: Response,
+  maxBytes: number,
+  signal: AbortSignal,
+): Promise<Uint8Array> {
+  signal.throwIfAborted();
+  const reader = response.body?.getReader();
+  if (reader === undefined) return new Uint8Array();
+  // A fetch ends its own body on abort, but a body that is not tied to the
+  // signal would keep `read` waiting, so cancel the reader too.
+  const cancel = () => void reader.cancel(signal.reason).catch(() => {});
+  signal.addEventListener("abort", cancel, { once: true });
+  try {
+    const chunks: Uint8Array[] = [];
+    let size = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > maxBytes) {
+        await reader.cancel().catch(() => {});
+        throw new SnapshotError(
+          "pds-unreachable",
+          `the PDS sent more than ${maxBytes} bytes`,
+        );
+      }
+      chunks.push(value);
+    }
+    // A cancelled read ends as if the body were complete.
+    signal.throwIfAborted();
+    const body = new Uint8Array(size);
+    let offset = 0;
+    for (const chunk of chunks) {
+      body.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return body;
+  } finally {
+    signal.removeEventListener("abort", cancel);
   }
-  return new Uint8Array(await response.arrayBuffer());
 }
 
 /**
@@ -219,6 +353,16 @@ async function resolveSigningKey(
       error,
     );
   }
+}
+
+/**
+ * Whether a value is a string with at least one character.
+ *
+ * @param value - Anything.
+ * @returns `true` for a non-empty string.
+ */
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value !== "";
 }
 
 /**
