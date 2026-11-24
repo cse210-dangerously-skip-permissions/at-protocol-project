@@ -23,6 +23,7 @@
     "stack:down": "node infra/scripts/stack.mjs down",
     "stack:reset": "node infra/scripts/stack.mjs reset",
     "stack:logs": "node infra/scripts/stack.mjs logs",
+    "fault": "node infra/scripts/fault.mjs",
     "publish-events": "tsx services/publisher/src/cli.ts",
     "codegen": "node scripts/codegen.mjs",
     "codegen:check": "node scripts/codegen.mjs --check",
