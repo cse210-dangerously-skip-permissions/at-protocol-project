@@ -7,7 +7,7 @@ Verified firehose subscription, DID allowlist, view, and checkpoint.
 
 ## Run
 
-`npm run consume` follows the firehose and saves into `consumer.db`, resuming from its checkpoint after a restart. `npm run consume -- --fresh` uses an empty in-memory database instead: no memory of earlier history, as the experiments require, and no file touched. `--db <path>` picks another file. Stop with Ctrl+C. The snapshot rebuild on startup comes with #45.
+`npm run consume` follows the firehose and saves into `consumer.db`, resuming from its checkpoint after a restart. `npm run consume -- --fresh` uses an empty in-memory database instead: no memory of earlier history, as the experiments require, and no file touched. `--db <path>` picks another file. `--pds <url>` replaces `PDS_URL` from `.env.local`, such as the fault proxy from `npm run fault` ([infra/README.md](../../infra/README.md#cutting-a-service-off-from-the-pds)). Stop with Ctrl+C. The snapshot rebuild on startup comes with #45.
 
 ## Freshness
 

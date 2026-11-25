@@ -6,27 +6,33 @@ import { allowlistFromEnv } from "./allowlist.js";
 import { startFirehose } from "./firehose.js";
 import { ConsumerStore } from "./store.js";
 
-const USAGE = "usage: npm run consume -- [--fresh] [--db <path>]";
+const USAGE = "usage: npm run consume -- [--fresh] [--db <path>] [--pds <url>]";
 
 /** Where the consumer keeps its view and checkpoint unless told otherwise. */
 export const DEFAULT_DB = "consumer.db";
 
 /**
- * Pick the database from `consume` arguments.
+ * Pick the database and PDS from `consume` arguments.
  *
  * `--fresh` gives an in-memory database: empty on every start and gone on
- * exit, so it never touches or deletes a file on disk.
+ * exit, so it never touches or deletes a file on disk. `--pds` replaces
+ * `PDS_URL` from `.env.local`, for example with the fault proxy
+ * (`npm run fault -- proxy consumer`).
  *
  * @param argv - The arguments after the command name.
- * @returns The database path, or `null` when `--help` was asked for.
+ * @returns The database path and the PDS URL if given, or `null` when
+ *   `--help` was asked for.
  * @throws If an option is unknown or `--fresh` is combined with `--db`.
  */
-export function parseConsumeArgs(argv: readonly string[]): string | null {
+export function parseConsumeArgs(
+  argv: readonly string[],
+): { db: string; pds: string | undefined } | null {
   const { values } = parseArgs({
     args: [...argv],
     options: {
       fresh: { type: "boolean" },
       db: { type: "string" },
+      pds: { type: "string" },
       help: { type: "boolean" },
     },
   });
@@ -34,7 +40,10 @@ export function parseConsumeArgs(argv: readonly string[]): string | null {
   if (values.fresh && values.db !== undefined) {
     throw new RangeError("--fresh and --db can't be used together");
   }
-  return values.fresh ? ":memory:" : (values.db ?? DEFAULT_DB);
+  return {
+    db: values.fresh ? ":memory:" : (values.db ?? DEFAULT_DB),
+    pds: values.pds,
+  };
 }
 
 /**
@@ -48,9 +57,9 @@ export function parseConsumeArgs(argv: readonly string[]): string | null {
  * @returns The exit code: 0 on a clean stop, 2 for bad arguments.
  */
 export async function main(argv: readonly string[]): Promise<number> {
-  let db: string | null;
+  let args: ReturnType<typeof parseConsumeArgs>;
   try {
-    db = parseConsumeArgs(argv);
+    args = parseConsumeArgs(argv);
   } catch (error) {
     log(
       "consumer",
@@ -60,12 +69,14 @@ export async function main(argv: readonly string[]): Promise<number> {
     log("consumer", USAGE, console.error);
     return 2;
   }
-  if (db === null) {
+  if (args === null) {
     console.log(USAGE);
     return 0;
   }
 
-  const env = loadLocalEnv();
+  const { db } = args;
+  const localEnv = loadLocalEnv();
+  const env = { ...localEnv, PDS_URL: args.pds ?? localEnv.PDS_URL };
   const store = new ConsumerStore(db);
   const firehose = startFirehose({
     env,

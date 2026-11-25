@@ -14,8 +14,15 @@ afterEach(() => {
 });
 
 test("uses the database on disk by default, or the one given", () => {
-  expect(parseConsumeArgs([])).toBe(DEFAULT_DB);
-  expect(parseConsumeArgs(["--db", "other.db"])).toBe("other.db");
+  expect(parseConsumeArgs([])?.db).toBe(DEFAULT_DB);
+  expect(parseConsumeArgs(["--db", "other.db"])?.db).toBe("other.db");
+});
+
+test("--pds overrides the PDS URL, and is unset otherwise", () => {
+  expect(parseConsumeArgs([])?.pds).toBeUndefined();
+  expect(parseConsumeArgs(["--pds", "http://127.0.0.1:2584"])?.pds).toBe(
+    "http://127.0.0.1:2584",
+  );
 });
 
 test("--fresh starts empty and leaves the saved database alone", () => {
@@ -25,11 +32,11 @@ test("--fresh starts empty and leaves the saved database alone", () => {
   saved.applyCommit({ cursor: 7, did: "did:plc:p", rev: "rev-a", events: [] });
   saved.close();
 
-  const fresh = new ConsumerStore(parseConsumeArgs(["--fresh"])!);
+  const fresh = new ConsumerStore(parseConsumeArgs(["--fresh"])!.db);
   expect(fresh.getCheckpoint()).toEqual({ cursor: null, revs: {} });
   fresh.close();
 
-  const reopened = new ConsumerStore(parseConsumeArgs(["--db", path])!);
+  const reopened = new ConsumerStore(parseConsumeArgs(["--db", path])!.db);
   expect(reopened.getCheckpoint().cursor).toBe(7);
   reopened.close();
 });

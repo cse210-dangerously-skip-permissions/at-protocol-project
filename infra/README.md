@@ -21,7 +21,7 @@ The PLC directory also uses a Postgres container that is not published on any po
 
 - Docker with Compose: Docker Desktop on macOS or Windows, or Docker Engine with the Compose plugin on Linux
 - Node.js 22.19 or newer, as for the rest of the repo
-- Ports 2582 and 2583 free
+- Ports 2582 and 2583 free (and 2584–2585 while `npm run fault -- proxy consumer` runs)
 
 ### Commands
 
@@ -71,6 +71,7 @@ Running `stack:seed` again changes nothing. After `npm run stack:reset` the old 
 | `scripts/checks.mjs` | The `stack:check` steps, one named function each, in the order `runChecks()` calls |
 | `scripts/env.mjs`    | Creating and reading `infra/.env`                                                  |
 | `scripts/seed.mjs`   | The `stack:seed` command: the seed accounts and `.env.local`                       |
+| `scripts/fault.mjs`  | The `fault` command: cut one service off from the PDS and restore it (below)       |
 | `scripts/*.test.mjs` | Unit tests for the files above. `npm test` runs them                               |
 
 The unit tests need no Docker. `stack:check` tests the parts they can't: the containers themselves.
@@ -92,6 +93,23 @@ Data lives in two Docker volumes, `trustlab_pds-data` and `trustlab_plc-db`. The
 - Resolve DIDs against `http://localhost:2582`, not `https://plc.directory`.
 - Handles such as `publisher.test` don't resolve through DNS. Use DIDs, or ask the PDS with `com.atproto.identity.resolveHandle`.
 - The seed accounts and their credentials are in `.env.local` (above).
+
+### Cutting a service off from the PDS
+
+`npm run fault` cuts one service's connection to the PDS and restores it, while the PDS keeps running and keeps its data. The consumer runs on the host, so `docker network disconnect` can't reach it. Instead, a TCP proxy sits between the service and the PDS:
+
+```sh
+npm run fault -- proxy consumer                      # runs until Ctrl+C
+npm run consume -- --pds http://127.0.0.1:2584       # point the consumer at the proxy
+npm run fault -- block consumer                      # drop its connections, refuse new ones
+npm run fault -- restore consumer                    # let it reconnect
+```
+
+| Service    | Proxy port | Control port |
+| ---------- | ---------- | ------------ |
+| `consumer` | 2584       | 2585         |
+
+`block` and `restore` return once the proxy has acted, so scripts can publish right after. Both fail with exit code 1 if the proxy isn't running. Everything else, including the publisher, still talks to the PDS directly. A consumer catches up after `restore` only if it saved a cursor before `block`. One that has seen no commit yet reconnects at the live tail and misses what was published in between.
 
 ### What this network can't show
 
