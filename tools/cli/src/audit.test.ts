@@ -62,11 +62,27 @@ test("missing evidence prints as -, and streams are separated by a blank line", 
       "stream builds did=did:plc:publisher",
       "  verdict   unknown",
       "  reason    no-witness",
-      "  witnessed seq=5 cid=-",
+      "  witnessed seq=- cid=-",
       "  current   seq=5 cid=bafy-now",
       "",
     ].join("\n"),
   ]);
+});
+
+test("a chain conflict with no CIDs still shows its seq on the current line", () => {
+  expect(
+    formatAudit([
+      {
+        did: DID,
+        stream: "releases",
+        verdict: {
+          verdict: "conflict",
+          reason: "broken-link",
+          evidence: { seq: 4 },
+        },
+      },
+    ]),
+  ).toContain("  witnessed seq=- cid=-\n  current   seq=4 cid=-\n");
 });
 
 test("says so when there is nothing to show", () => {

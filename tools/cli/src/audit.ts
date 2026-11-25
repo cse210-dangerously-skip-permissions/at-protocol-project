@@ -31,11 +31,14 @@ export function formatAudit(results: readonly StreamVerdict[]): string {
   if (results.length === 0) return "no streams audited\n";
   const blocks = results.map(({ did, stream, verdict }) => {
     const seq = verdict.evidence?.seq ?? "-";
+    // Only claim a witnessed seq when the witness actually has a CID there.
+    const witnessedSeq =
+      verdict.evidence?.witnessedCid === undefined ? "-" : seq;
     return [
       `stream ${stream} did=${did}`,
       `  verdict   ${verdict.verdict}`,
       `  reason    ${verdict.reason}`,
-      `  witnessed seq=${seq} cid=${verdict.evidence?.witnessedCid ?? "-"}`,
+      `  witnessed seq=${witnessedSeq} cid=${verdict.evidence?.witnessedCid ?? "-"}`,
       `  current   seq=${seq} cid=${verdict.evidence?.currentCid ?? "-"}`,
     ].join("\n");
   });
