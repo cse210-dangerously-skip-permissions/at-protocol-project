@@ -7,7 +7,17 @@ Verified firehose subscription, DID allowlist, view, and checkpoint.
 
 ## Run
 
-`npm run consume` follows the firehose and saves into `consumer.db`, resuming from its checkpoint after a restart. `npm run consume -- --fresh` uses an empty in-memory database instead: no memory of earlier history, as the experiments require, and no file touched. `--db <path>` picks another file. `--pds <url>` replaces `PDS_URL` from `.env.local`, such as the fault proxy from `npm run fault` ([infra/README.md](../../infra/README.md#cutting-a-service-off-from-the-pds)). Stop with Ctrl+C. The snapshot rebuild on startup comes with #45.
+`npm run consume` follows the firehose and saves into `consumer.db`, resuming from its checkpoint after a restart. `npm run consume -- --fresh` uses an empty in-memory database instead: no memory of earlier history, as the experiments require, and no file touched. `--db <path>` picks another file. `--pds <url>` replaces `PDS_URL` from `.env.local`, such as the fault proxy from `npm run fault` ([infra/README.md](../../infra/README.md#cutting-a-service-off-from-the-pds)). Stop with Ctrl+C.
+
+## Restart
+
+`startConsumer` (`src/restart.ts`) is what `consume` runs, so a restart catches up on its own:
+
+- No checkpoint (first run, or `--fresh`): rebuild the view from a verified `getRepo` snapshot (`@trustlab/recovery`), then follow the firehose from now.
+- A checkpoint: resume the firehose from its cursor, which replays what was missed.
+- The PDS rejects the cursor as in the future (`FutureCursor`, such as after `stack:reset`): `resetCursor()`, rebuild from a snapshot, and the library reconnects from now.
+
+Events published between a snapshot and the firehose start can be missed; #71 closes that window. A cursor older than the PDS keeps is not caught, because `@atproto/sync` drops the `OutdatedCursor` #info frame.
 
 ## Freshness
 

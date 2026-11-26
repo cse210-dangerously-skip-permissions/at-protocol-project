@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { loadLocalEnv, log } from "@trustlab/contracts";
 import { allowlistFromEnv } from "./allowlist.js";
-import { startFirehose } from "./firehose.js";
+import { startConsumer } from "./restart.js";
 import { ConsumerStore } from "./store.js";
 
 const USAGE = "usage: npm run consume -- [--fresh] [--db <path>] [--pds <url>]";
@@ -50,8 +50,9 @@ export function parseConsumeArgs(
  * Run the consumer until Ctrl+C: follow the firehose and save verified
  * events from the publisher in `.env.local`.
  *
- * A fresh consumer starts from the live tail with no memory of earlier
- * history. #45 adds the snapshot rebuild it needs first.
+ * With no checkpoint (a first run, or `--fresh`), the view is rebuilt from a
+ * verified snapshot first; with one, the feed resumes from its cursor. See
+ * `startConsumer`.
  *
  * @param argv - The command-line arguments.
  * @returns The exit code: 0 on a clean stop, 2 for bad arguments.
@@ -78,7 +79,7 @@ export async function main(argv: readonly string[]): Promise<number> {
   const localEnv = loadLocalEnv();
   const env = { ...localEnv, PDS_URL: args.pds ?? localEnv.PDS_URL };
   const store = new ConsumerStore(db);
-  const firehose = startFirehose({
+  const firehose = await startConsumer({
     env,
     store,
     allow: allowlistFromEnv(env).allow,

@@ -20,6 +20,12 @@ export interface FirehoseOptions {
   allow: (did: string) => boolean;
   /** Called after each commit is saved. */
   onCommit?: (commit: VerifiedCommit) => void;
+  /**
+   * Called when the PDS refuses the saved cursor because it is past the
+   * PDS's newest event, such as after `stack:reset`. The library keeps
+   * retrying with the store's cursor, so reset it here.
+   */
+  onCursorRejected?: () => void;
 }
 
 /** A running subscription. */
@@ -110,6 +116,16 @@ export function startFirehose(opts: FirehoseOptions): RunningFirehose {
       // The library wraps the real reason (bad signature, unknown DID, ...)
       // in `cause`, so print the whole chain.
       log("consumer", `firehose: ${inspect(error)}`, console.error);
+      // The PDS's error frame arrives as an XRPCError whose `error` is the
+      // code from the subscribeRepos Lexicon.
+      const cause: unknown = error.cause;
+      if (
+        typeof cause === "object" &&
+        cause !== null &&
+        (cause as { error?: unknown }).error === "FutureCursor"
+      ) {
+        opts.onCursorRejected?.();
+      }
     },
   });
 
