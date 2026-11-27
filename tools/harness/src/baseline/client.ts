@@ -62,11 +62,14 @@ export interface BaselineClient {
  * @param url - The server's base URL.
  * @param publisherToken - The publisher token, for appends and tampers.
  *   Readers leave it out.
+ * @param fetch - Sends the requests. Defaults to the global `fetch`, looked
+ *   up at each request.
  * @returns The client.
  */
 export function baselineClient(
   url: string,
   publisherToken?: string,
+  fetch?: typeof globalThis.fetch,
 ): BaselineClient {
   /**
    * Send one request and parse the JSON answer.
@@ -81,7 +84,7 @@ export function baselineClient(
     path: string,
     body?: unknown,
   ): Promise<unknown> {
-    const response = await fetch(`${url}${path}`, {
+    const response = await (fetch ?? globalThis.fetch)(`${url}${path}`, {
       method,
       headers: {
         ...(publisherToken === undefined

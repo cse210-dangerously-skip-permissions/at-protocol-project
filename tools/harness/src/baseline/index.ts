@@ -15,6 +15,11 @@ export {
   verifyHead,
 } from "./head.js";
 export {
+  baselineSource,
+  BaselineSourceError,
+  type BaselineSourceOptions,
+} from "./source.js";
+export {
   type BaselineServerOptions,
   type RunningBaseline,
   startBaselineServer,

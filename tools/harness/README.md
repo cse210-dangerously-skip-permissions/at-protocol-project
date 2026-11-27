@@ -52,3 +52,32 @@ await verifyHead(server.publicKey, signed); // true
 - **One change at a time.** Writes are queued and each is one SQLite transaction, like one AT commit, so appends never reuse a seq and a reader never sees a tamper halfway. `close()` waits for queued writes and can be called twice.
 
 Storage is `node:sqlite` (`dbPath`, default in memory). `tests/integration/baseline.test.ts` runs the same workload and tampers on the PDS and on S0 and compares the CIDs.
+
+## Sources
+
+A fresh consumer reads a stream through a `StreamSource` (`src/source.ts`, #84), and `auditStream(source, stream, witness?)` runs `compareWithWitness` on what it read. The audit logic never sees which setup the events came from, so the same rules run in all four cells of ADR-007.
+
+```ts
+const verdictA0 = await auditStream(atSource(env), "releases");
+const verdictS0 = await auditStream(
+  baselineSource({ url: server.url, publicKey: server.publicKey }),
+  "releases",
+);
+// A1 and S1 pass the witness's checkpoints and a verifier.
+const verdictA1 = await auditStream(atSource(env), "releases", {
+  checkpoints,
+  verify: pinnedVerifier(didDocKey),
+});
+```
+
+|                      | `atSource(env)` (A0, A1)                             | `baselineSource({ url, publicKey })` (S0, S1)                 |
+| -------------------- | ---------------------------------------------------- | ------------------------------------------------------------- |
+| Reads                | A `getRepo` snapshot, planned into events (#43, #44) | `GET .../events` and `GET .../head`                           |
+| Checks the publisher | Commit signature against the DID document's key      | Head signature against the configured key                     |
+| `did` on each event  | The publisher's DID                                  | The public key, the only name S0 has for the publisher        |
+| `"unreachable"`      | The snapshot fails with `pds-unreachable`            | A failed connection, or an error status other than a head 404 |
+| Throws               | The repo doesn't verify, or the PLC can't be read    | The head isn't signed by the key, or an answer is malformed   |
+
+S0 serves the events and the head in separate requests, so `baselineSource` reads the events again after the head and retries, up to three times, if they changed. One read never mixes two states of a stream, just as one AT commit can't.
+
+Without `witness`, no witness is queried, as ADR-007 requires for A0 and S0. `tests/integration/source.test.ts` runs the same workload and tamper on the PDS and on S0 and checks that both give ADR-007's verdict for each scenario.
