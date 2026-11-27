@@ -6,3 +6,4 @@ export {
   checkCheckpoint,
   verifyCheckpoint,
 } from "./checkpoint.js";
+export { type CheckpointVerifier, compareWithWitness } from "./witness.js";

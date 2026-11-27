@@ -16,6 +16,25 @@ the affected sequence, or `accept` with reason `ok` or `empty`.
 Records must pass `parseEventRecord` before they are put in a `StoredEvent`.
 The validator checks relationships between those individually valid records.
 
+## Witness comparison
+
+`compareWithWitness(events, checkpoints, verify?, head?)` (`src/witness.ts`) applies the verdict rules in ADR-003, in order:
+
+| Rule                                                                           | Verdict    | Reason                                                 |
+| ------------------------------------------------------------------------------ | ---------- | ------------------------------------------------------ |
+| `events` is `"unreachable"`                                                    | `unknown`  | `pds-unreachable`                                      |
+| `validateChain(events, head)` finds a conflict                                 | `conflict` | unchanged, such as `broken-link`                       |
+| `checkpoints` is `"unreachable"`                                               | `unknown`  | `witness-unreachable`                                  |
+| A verified checkpoint is above the current head, or has another CID at its seq | `conflict` | `truncated`, `rewritten`                               |
+| A checkpoint fails `verify`, or is for another DID or stream                   | `unknown`  | `bad-evidence`                                         |
+| Otherwise                                                                      | `accept`   | `extends-witness`, or `no-witness` with no checkpoints |
+
+Every checkpoint is checked, not only the newest, since the newest may postdate the rewrite. A checkpoint that fails verification never leads to `conflict`, so a bad witness can't frame a publisher. When several checkpoints conflict, the lowest seq is reported, with the witnessed and current CIDs as evidence. The result doesn't depend on input order.
+
+`verify` defaults to `verifyCheckpoint`, which trusts the key the witness stored. On AT, pass one that uses the key from the publisher's DID document instead (ADR-003 rule 3), as `e2e/observed-rollback.spec.ts` does. A `verify` that throws counts as a failed check.
+
+Story #21's spec, `e2e/observed-rollback.spec.ts`, runs a real witness while the publisher writes five events, then rewrites or truncates them with the tamper tools. A fresh consumer rebuilt from a snapshot gets `accept` (`no-witness`) without the checkpoints and `conflict` (`rewritten` or `truncated`) with them.
+
 ## Checkpoints
 
 `verifyCheckpoint(cp)` (`src/checkpoint.ts`) checks a `WitnessCheckpoint` offline, with no network and no PDS. It returns true only if:
