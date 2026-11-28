@@ -223,6 +223,15 @@ export class ConsumerStore {
   }
 
   /**
+   * Forget the feed cursor, so the next subscription starts at the live tail.
+   * Use it when the PDS rejects the cursor: otherwise every new commit would
+   * look like a replay and be skipped. Events and revs are kept.
+   */
+  resetCursor(): void {
+    this.#db.prepare("DELETE FROM feed_cursor WHERE id = 1").run();
+  }
+
+  /**
    * Read the checkpoint.
    *
    * @returns The feed cursor and the last rev per DID.

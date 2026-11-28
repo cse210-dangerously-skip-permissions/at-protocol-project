@@ -10,6 +10,7 @@ export {
   type RunningFirehose,
   startFirehose,
 } from "./firehose.js";
+export { rebuildFromSnapshot, startConsumer } from "./restart.js";
 export {
   ConsumerStore,
   EventConflictError,
