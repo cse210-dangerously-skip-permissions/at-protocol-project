@@ -1,6 +1,6 @@
 # @trustlab/recovery
 
-`getRepo` snapshot fetch, verification, and view rebuild.
+`getRepo` snapshot fetch, verification, view rebuild, and cutover to the live feed.
 
 - **Team:** Pipeline
 - **System:** Recovery (REC)
@@ -39,6 +39,17 @@ Gaps are reported, not fixed: for each stream, the seqs missing between 1 and it
 An event from another DID, or two events with the same stream and seq, throws: a verified snapshot never has either.
 
 The consumer writes the plan with `ConsumerStore.replaceRepo`, which replaces that DID's events and rev in one transaction (#45 wires the two together). A rebuild replaces the view: it matches what the publisher serves now.
+
+## Cutover
+
+`drainBuffer(buffered, snapshotRev, have)` (`src/cutover.ts`) is the pure half of going from a rebuild to the live feed without missing or repeating an event (#71). The consumer subscribes first and buffers, rebuilds from a snapshot at `snapshotRev`, then applies what `drainBuffer` returns before it goes live.
+
+- A commit at or below `snapshotRev` is already in the snapshot and is dropped. Revs are TIDs and compare as strings.
+- A commit delivered twice (the same cursor) is kept once.
+- From the rest, an event the view already holds with the same CID is removed, where `have(did, stream, seq)` gives the CID the view holds. So is one an earlier buffered commit carries with the same CID. The commit stays even with no events left, since applying it still moves the cursor and rev forward.
+- An event whose CID differs from the one held is kept: applying it is a conflict, which the store reports.
+
+The result is in cursor order. `BufferedCommit` lists the fields it reads, and the consumer's `VerifiedCommit` fits it, so this package still does not import the consumer. Every buffered commit must belong to the repo that was rebuilt. Wiring it into the consumer's startup follows #45.
 
 The integration test is `tests/integration/recovery.test.ts`. Run it with `npm run stack:up`, then `npm run test:integration`.
 
