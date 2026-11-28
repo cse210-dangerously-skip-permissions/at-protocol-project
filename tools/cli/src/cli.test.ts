@@ -1,3 +1,8 @@
+import { DatabaseSync } from "node:sqlite";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { ConsumerStore } from "@trustlab/consumer";
 import { runScenario } from "@trustlab/harness";
 import { expect, test, vi } from "vitest";
 import { main } from "./cli.js";
@@ -63,7 +68,7 @@ test("each subcommand has --help", async () => {
 });
 
 test("unimplemented subcommands say so", async () => {
-  for (const command of ["stack", "consume", "witness", "audit"]) {
+  for (const command of ["stack", "consume", "witness"]) {
     const { code, err } = await run(command);
     expect(code).toBe(1);
     expect(err).toBe(`${command}: not implemented`);
@@ -113,4 +118,46 @@ test("demo prints one line per run with the verdict kind", async () => {
     "demo smoke run=1 config=A0 verdict=conflict\n" +
       "demo smoke run=2 config=A0 verdict=none",
   );
+});
+
+test("audit reads the latest verdict per stream in stable order", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "audit-cli-"));
+  const path = join(dir, "consumer.db");
+  try {
+    expect((await run("audit", "--db", path)).code).toBe(1);
+    expect((await run("audit", "--bad")).code).toBe(2);
+    new DatabaseSync(path).close();
+    expect((await run("audit", "--db", path)).out).toBe("no streams audited");
+    const store = new ConsumerStore(path);
+    try {
+      expect((await run("audit", "--db", path)).out).toBe("no streams audited");
+      for (const stream of ["z", "a"])
+        store.saveVerdict(
+          "did:example:p",
+          stream,
+          {
+            verdict: "accept",
+            reason: "ok",
+          },
+          null,
+        );
+      store.saveVerdict(
+        "did:example:p",
+        "a",
+        {
+          verdict: "conflict",
+          reason: "broken-link",
+          evidence: { seq: 2 },
+        },
+        null,
+      );
+      const { out, code } = await run("audit", "--db", path);
+      expect(code).toBe(0);
+      expect(out).toMatch(/^stream a .*reason {4}broken-link.*stream z /s);
+    } finally {
+      store.close();
+    }
+  } finally {
+    rmSync(dir, { recursive: true });
+  }
 });

@@ -61,6 +61,11 @@ Notes:
 
 - **Tap** and **Ramjet** are existing AT event systems. We read them for ideas but do not depend on them or copy their code. Using either would put an existing event system between the publisher and the consumer, and the experiment would then measure that system rather than our witness.
 
+| Workspace dependency           | Purpose                                                                  | Boundary test                        |
+| ------------------------------ | ------------------------------------------------------------------------ | ------------------------------------ |
+| Consumer → `@trustlab/auditor` | Apply the shared chain and witness rules to the verified consumer view.  | `tests/integration/firehose.test.ts` |
+| CLI → `@trustlab/consumer`     | Read the latest verdicts through the consumer’s public SQLite interface. | `tools/cli/src/cli.test.ts`          |
+
 ### What counts as a dependency
 
 - A direct dependency in any `package.json` gets a row.

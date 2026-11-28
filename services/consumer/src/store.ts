@@ -1,5 +1,13 @@
 import { DatabaseSync } from "node:sqlite";
-import type { ConsumerCheckpoint, StoredEvent } from "@trustlab/contracts";
+import type {
+  ConsumerCheckpoint,
+  HeadRecord,
+  StoredEvent,
+  Verdict,
+} from "@trustlab/contracts";
+
+/** Default on-disk consumer database. */
+export const DEFAULT_DB = "consumer.db";
 
 /** An event inside a commit. The DID comes from the commit. */
 export type CommitEvent = Omit<StoredEvent, "did">;
@@ -12,6 +20,16 @@ export interface VerifiedCommit {
   did: string;
   /** Repo revision after this commit. */
   rev: string;
+  /** Current event writes. A CID with a null record marks a signed, malformed event. */
+  changes?: readonly {
+    stream: string;
+    seq: number;
+    rkey: string;
+    cid: string | null;
+    record: unknown;
+  }[];
+  /** Verified head writes. Null denotes deletion and "invalid" a contract failure. */
+  heads?: readonly { stream: string; record: HeadRecord | "invalid" | null }[];
   /** Our events created by this commit. May be empty. */
   events: readonly CommitEvent[];
 }
@@ -50,6 +68,21 @@ const SCHEMA = `
     cid    TEXT    NOT NULL,
     record TEXT    NOT NULL,
     PRIMARY KEY (did, stream, seq)
+  ) STRICT;
+
+  CREATE TABLE IF NOT EXISTS audit_changes (
+    did TEXT NOT NULL, stream TEXT NOT NULL, seq INTEGER NOT NULL,
+    rkey TEXT NOT NULL, cid TEXT, record TEXT, PRIMARY KEY (did, stream, seq)
+  ) STRICT;
+  CREATE TABLE IF NOT EXISTS audit_heads (
+    did TEXT NOT NULL, stream TEXT NOT NULL, record TEXT, PRIMARY KEY (did, stream)
+  ) STRICT;
+  CREATE TABLE IF NOT EXISTS audit_verifications (
+    did TEXT PRIMARY KEY, verified_as_of TEXT NOT NULL
+  ) STRICT;
+  CREATE TABLE IF NOT EXISTS verdicts (
+    did TEXT NOT NULL, stream TEXT NOT NULL, verdict TEXT NOT NULL, reason TEXT NOT NULL,
+    evidence TEXT, checked_at TEXT NOT NULL, verified_as_of TEXT, PRIMARY KEY (did, stream)
   ) STRICT;
 
   CREATE TABLE IF NOT EXISTS feed_cursor (
@@ -191,6 +224,9 @@ export class ConsumerStore {
         );
       }
 
+      this.#db.prepare("DELETE FROM audit_changes WHERE did = ?").run(did);
+      this.#db.prepare("DELETE FROM audit_heads WHERE did = ?").run(did);
+      this.#markVerified(did);
       this.#db.prepare("DELETE FROM events WHERE did = ?").run(did);
       const insertEvent = this.#db.prepare(
         "INSERT INTO events (did, stream, seq, rkey, cid, record) VALUES (?, ?, ?, ?, ?, ?)",
@@ -258,6 +294,89 @@ export class ConsumerStore {
     return rows.map(toStoredEvent);
   }
 
+  /** List known streams, including streams whose last event was removed. */
+  auditStreams(did?: string) {
+    return this.#db
+      .prepare(
+        `SELECT did, stream FROM (SELECT did, stream FROM events UNION SELECT did, stream FROM audit_changes
+      UNION SELECT did, stream FROM audit_heads UNION SELECT did, stream FROM verdicts) ${did === undefined ? "" : "WHERE did = ?"} ORDER BY did, stream`,
+      )
+      .all(...(did === undefined ? [] : [did])) as unknown as {
+      did: string;
+      stream: string;
+    }[];
+  }
+
+  /** Read the current chain with verified changes applied over the original events. */
+  auditEvents(did: string, stream: string): StoredEvent[] {
+    const rows = this.#db
+      .prepare(
+        `SELECT e.* FROM events e WHERE did = ? AND stream = ?
+      AND NOT EXISTS (SELECT 1 FROM audit_changes c WHERE (c.did,c.stream,c.seq) = (e.did,e.stream,e.seq))
+      UNION ALL SELECT did,stream,seq,rkey,cid,record FROM audit_changes
+      WHERE did = ? AND stream = ? AND cid IS NOT NULL ORDER BY seq`,
+      )
+      .all(did, stream, did, stream) as unknown as EventRow[];
+    return rows.map(toStoredEvent);
+  }
+
+  /** Read the verified head or the marker for a signed malformed head. */
+  auditHead(did: string, stream: string): HeadRecord | "invalid" | undefined {
+    const row = this.#db
+      .prepare("SELECT record FROM audit_heads WHERE did=? AND stream=?")
+      .get(did, stream);
+    return typeof row?.record === "string"
+      ? (JSON.parse(row.record) as HeadRecord | "invalid")
+      : undefined;
+  }
+
+  /** Read the repo revision used to detect a change while a witness request is in flight. */
+  auditRev(did: string): string | null {
+    const row = this.#db
+      .prepare("SELECT rev FROM repo_revs WHERE did=?")
+      .get(did);
+    return row ? String(row.rev) : null;
+  }
+
+  /** Save a verdict only if its input revision is still current. */
+  saveVerdict(
+    did: string,
+    stream: string,
+    result: Verdict,
+    rev: string | null,
+  ) {
+    const write = this.#db
+      .prepare(
+        `INSERT OR REPLACE INTO verdicts (did,stream,verdict,reason,evidence,checked_at,verified_as_of)
+      SELECT ?,?,?,?,?,?,(SELECT verified_as_of FROM audit_verifications WHERE did=?)
+      WHERE (SELECT rev FROM repo_revs WHERE did=?) IS ?`,
+      )
+      .run(
+        did,
+        stream,
+        result.verdict,
+        result.reason,
+        JSON.stringify(result.evidence) ?? null,
+        new Date().toISOString(),
+        did,
+        did,
+        rev,
+      );
+    return write.changes === 1;
+  }
+
+  /** Read the latest results in the CLI's stable display order. */
+  latestVerdicts() {
+    return selectVerdicts(this.#db);
+  }
+
+  /** Record the time of a verified commit or snapshot within its transaction. */
+  #markVerified(did: string) {
+    this.#db
+      .prepare("INSERT OR REPLACE INTO audit_verifications VALUES (?,?)")
+      .run(did, new Date().toISOString());
+  }
+
   /** Close the database. */
   close(): void {
     this.#db.close();
@@ -282,10 +401,17 @@ export class ConsumerStore {
       "INSERT INTO events (did, stream, seq, rkey, cid, record) VALUES (?, ?, ?, ?, ?, ?)",
     );
 
+    const changes = [...(commit.changes ?? [])];
     for (const commitEvent of commit.events) {
       const event: StoredEvent = { ...commitEvent, did: commit.did };
       const stored = findCid.get(event.did, event.stream, event.seq) as
         { cid: string } | undefined;
+      const deleted = this.#db
+        .prepare(
+          "SELECT 1 FROM audit_changes WHERE did=? AND stream=? AND seq=? AND cid IS NULL",
+        )
+        .get(event.did, event.stream, event.seq);
+      if (deleted) changes.push(event);
       if (stored === undefined) {
         insertEvent.run(
           event.did,
@@ -295,11 +421,33 @@ export class ConsumerStore {
           event.cid,
           JSON.stringify(event.record),
         );
-      } else if (stored.cid !== event.cid) {
+      } else if (!deleted && stored.cid !== event.cid) {
         throw new EventConflictError(event, stored.cid);
       }
     }
 
+    for (const change of changes) {
+      this.#db
+        .prepare("INSERT OR REPLACE INTO audit_changes VALUES (?,?,?,?,?,?)")
+        .run(
+          commit.did,
+          change.stream,
+          change.seq,
+          change.rkey,
+          change.cid,
+          JSON.stringify(change.record),
+        );
+    }
+    for (const head of commit.heads ?? []) {
+      this.#db
+        .prepare("INSERT OR REPLACE INTO audit_heads VALUES (?,?,?)")
+        .run(
+          commit.did,
+          head.stream,
+          head.record && JSON.stringify(head.record),
+        );
+    }
+    this.#markVerified(commit.did);
     this.#db
       .prepare(
         "INSERT INTO feed_cursor (id, cursor) VALUES (1, ?) ON CONFLICT (id) DO UPDATE SET cursor = excluded.cursor",
@@ -312,4 +460,51 @@ export class ConsumerStore {
       .run(commit.did, commit.rev);
     return true;
   }
+}
+
+/** Read persisted verdicts without creating a database or migrating an older schema. */
+export function readLatestVerdicts(path: string) {
+  const db = new DatabaseSync(path, { readOnly: true });
+  try {
+    if (
+      !db
+        .prepare(
+          "SELECT 1 FROM sqlite_schema WHERE type='table' AND name='verdicts'",
+        )
+        .get()
+    )
+      return [];
+    return selectVerdicts(db);
+  } finally {
+    db.close();
+  }
+}
+
+/** Decode the current verdict per stream for database readers. */
+function selectVerdicts(db: DatabaseSync) {
+  const rows = db
+    .prepare(
+      "SELECT did, stream, verdict, reason, evidence, checked_at AS checkedAt, verified_as_of AS verifiedAsOf FROM verdicts ORDER BY did, stream",
+    )
+    .all() as unknown as {
+    did: string;
+    stream: string;
+    verdict: Verdict["verdict"];
+    reason: string;
+    evidence: string | null;
+    checkedAt: string;
+    verifiedAsOf: string | null;
+  }[];
+  return rows.map(({ verdict, reason, evidence, ...row }) => ({
+    ...row,
+    verdict: {
+      verdict,
+      reason,
+      ...(evidence === null
+        ? {}
+        : {
+            evidence: JSON.parse(evidence) as NonNullable<Verdict["evidence"]>,
+          }),
+    },
+  }));
 }

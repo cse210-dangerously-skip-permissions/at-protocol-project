@@ -10,6 +10,7 @@
     "trustlab": "./src/bin.ts"
   },
   "dependencies": {
+    "@trustlab/consumer": "*",
     "@trustlab/harness": "*",
     "@trustlab/publisher": "*"
   }

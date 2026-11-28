@@ -2,13 +2,28 @@ import { inspect } from "node:util";
 import { IdResolver, MemoryCache } from "@atproto/identity";
 import { type CommitEvt, type Event, Firehose } from "@atproto/sync";
 import {
+  ContractError,
   log,
   EVENT_NSID,
   HEAD_NSID,
   type LocalEnv,
   parseEventRecord,
+  parseEventRkey,
+  parseHeadRecord,
+  parseHeadRkey,
 } from "@trustlab/contracts";
+import { auditAll, type WitnessClient } from "./audit.js";
 import type { CommitEvent, ConsumerStore, VerifiedCommit } from "./store.js";
+
+/** Keep contract failures as audit evidence without trusting the rejected payload. */
+function validatedRecord<T>(parse: () => T): T | null {
+  try {
+    return parse();
+  } catch (error) {
+    if (error instanceof ContractError) return null;
+    throw error;
+  }
+}
 
 /** What `startFirehose` needs. */
 export interface FirehoseOptions {
@@ -18,6 +33,8 @@ export interface FirehoseOptions {
   store: ConsumerStore;
   /** Which repo DIDs to keep. Everything else is dropped and counted. */
   allow: (did: string) => boolean;
+  /** Optional source of witness checkpoints. */
+  witness?: WitnessClient;
   /** Called after each commit is saved. */
   onCommit?: (commit: VerifiedCommit) => void;
 }
@@ -37,8 +54,8 @@ export interface RunningFirehose {
  * collections and allowed DIDs are kept. The feed resumes from the store's
  * cursor, so a restart picks up where the last run stopped.
  *
- * Only event creates go into the view. Updates and deletes are logged, and
- * #67 decides what to do with them.
+ * The original event view retains creates. Audits apply verified head writes,
+ * event updates and deletions to reconstruct each stream’s current chain.
  *
  * @param opts - Environment, store, allowlist, and an optional callback.
  * @returns A handle to stop the subscription.
@@ -47,7 +64,9 @@ export function startFirehose(opts: FirehoseOptions): RunningFirehose {
   const { env, store, allow, onCommit } = opts;
   let dropped = 0;
   let writes: CommitEvt[] = [];
-  let queue = Promise.resolve();
+  let queue = auditAll(store, opts.witness).catch((error: unknown) => {
+    log("consumer", `startup audit failed: ${inspect(error)}`, console.error);
+  });
 
   const firehose = new Firehose({
     service: env.PDS_URL.replace(/^http/, "ws"),
@@ -76,7 +95,7 @@ export function startFirehose(opts: FirehoseOptions): RunningFirehose {
           .then(async () => {
             writes = [];
             await handler();
-            saveCommit(did, seq, writes);
+            await saveCommit(did, seq, writes);
           })
           .catch((error: unknown) => {
             log(
@@ -120,11 +139,11 @@ export function startFirehose(opts: FirehoseOptions): RunningFirehose {
    * @param seq - The commit's firehose sequence number.
    * @param commitWrites - The commit's writes to our collections.
    */
-  function saveCommit(
+  async function saveCommit(
     did: string,
     seq: number,
     commitWrites: CommitEvt[],
-  ): void {
+  ): Promise<void> {
     const [first] = commitWrites;
     if (first === undefined) return;
     if (!allow(did)) {
@@ -138,6 +157,8 @@ export function startFirehose(opts: FirehoseOptions): RunningFirehose {
     }
 
     const events: CommitEvent[] = [];
+    const changes: NonNullable<VerifiedCommit["changes"]>[number][] = [];
+    const heads: NonNullable<VerifiedCommit["heads"]>[number][] = [];
     for (const write of commitWrites) {
       const cid = write.event === "delete" ? "-" : write.cid.toString();
       log(
@@ -145,17 +166,30 @@ export function startFirehose(opts: FirehoseOptions): RunningFirehose {
         `verified ${write.event} did=${did} rkey=${write.rkey} cid=${cid} rev=${write.rev}`,
         console.log,
       );
-      if (write.event === "create" && write.collection === EVENT_NSID) {
-        // Verified means the publisher signed it, not that it follows our
-        // contract, so check the record before it goes in the view.
-        const record = parseEventRecord(write.record, write.rkey);
-        events.push({
-          stream: record.stream,
-          seq: record.seq,
-          rkey: write.rkey,
-          cid,
-          record,
-        });
+      if (write.collection === HEAD_NSID) {
+        const stream = parseHeadRkey(write.rkey);
+        if (stream === null) continue;
+        const record =
+          write.event === "delete"
+            ? null
+            : (validatedRecord(() =>
+                parseHeadRecord(write.record, write.rkey),
+              ) ?? "invalid");
+        heads.push({ stream, record });
+      } else if (write.collection === EVENT_NSID) {
+        const key = parseEventRkey(write.rkey);
+        if (!key) continue;
+        const record =
+          write.event === "delete"
+            ? null
+            : validatedRecord(() => parseEventRecord(write.record, write.rkey));
+        const event = { ...key, rkey: write.rkey, cid, record };
+        if (write.event === "create" && record !== null) events.push(event);
+        else
+          changes.push({
+            ...event,
+            cid: write.event === "delete" ? null : cid,
+          });
       }
     }
 
@@ -164,8 +198,19 @@ export function startFirehose(opts: FirehoseOptions): RunningFirehose {
       did,
       rev: first.rev,
       events,
+      changes,
+      heads,
     };
-    if (store.applyCommit(commit)) onCommit?.(commit);
+    if (store.applyCommit(commit)) {
+      await auditAll(store, opts.witness, did).catch((error: unknown) => {
+        log(
+          "consumer",
+          `audit failed for saved commit seq=${seq}: ${inspect(error)}`,
+          console.error,
+        );
+      });
+      onCommit?.(commit);
+    }
   }
 
   // Runs until stop(); it reconnects on its own and reports errors to onError.

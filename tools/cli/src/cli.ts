@@ -1,4 +1,6 @@
 import { parseArgs } from "node:util";
+import { formatAudit } from "./audit.js";
+import { readLatestVerdicts, DEFAULT_DB } from "@trustlab/consumer";
 import { isConfig, runScenario } from "@trustlab/harness";
 import { runPublisherCli } from "@trustlab/publisher";
 
@@ -74,12 +76,8 @@ Run the witness, which keeps signed proofs of earlier stream heads.
 Not implemented yet.`,
   },
   audit: {
-    summary: "Audit a stream against witness checkpoints",
-    usage: `Usage: trustlab audit
-
-Audit a stream against witness checkpoints and print accept, conflict, or unknown.
-
-Not implemented yet.`,
+    summary: "Print the consumer's latest verdict for each stream",
+    run: audit,
   },
   demo: {
     summary: "Run a harness scenario on a fresh local stack",
@@ -187,6 +185,35 @@ async function demo(argv: readonly string[], io: CliIo): Promise<number> {
     return 0;
   } catch (error) {
     io.error(error instanceof Error ? error.message : String(error));
+    return 1;
+  }
+}
+
+/** Print the latest persisted verdicts from the selected consumer database. */
+async function audit(argv: readonly string[], io: CliIo): Promise<number> {
+  let db: string;
+  try {
+    const { values } = parseArgs({
+      args: [...argv],
+      options: {
+        db: { type: "string", default: DEFAULT_DB },
+        help: { type: "boolean" },
+      },
+    });
+    if (values.help) {
+      io.log("Usage: trustlab audit [--db <path>]");
+      return 0;
+    }
+    db = values.db;
+  } catch (error) {
+    io.error(String(error));
+    return 2;
+  }
+  try {
+    io.log(formatAudit(readLatestVerdicts(db)).trimEnd());
+    return 0;
+  } catch (error) {
+    io.error(String(error));
     return 1;
   }
 }
