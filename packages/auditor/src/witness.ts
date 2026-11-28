@@ -5,10 +5,20 @@ import type {
   WitnessCheckpoint,
 } from "@trustlab/contracts";
 import { validateChain } from "./chain.js";
-import { verifyCheckpoint } from "./checkpoint.js";
 
-/** Checks one checkpoint offline. `verifyCheckpoint` is the default. */
+/**
+ * Checks one checkpoint offline. On AT, build it from `verifyCheckpoint` with
+ * the key from the publisher's DID document (ADR-003 rule 3).
+ */
 export type CheckpointVerifier = (cp: WitnessCheckpoint) => Promise<boolean>;
+
+/** The publisher stream being audited. */
+export interface AuditSubject {
+  /** Publisher DID. */
+  did: string;
+  /** Stream name. */
+  stream: string;
+}
 
 /**
  * Audit one publisher stream against what a witness saw, following the rule
@@ -23,9 +33,10 @@ export type CheckpointVerifier = (cp: WitnessCheckpoint) => Promise<boolean>;
  *    below the witnessed seq (`truncated`), or the event at the witnessed seq
  *    has another CID (`rewritten`). Every checkpoint is checked, not only the
  *    newest, because the newest may postdate the rewrite.
- * 5. `unknown` (`bad-evidence`) when any checkpoint fails `verify`, or is for
- *    another DID or stream than `events`. A bad witness can never cause a
- *    `conflict`, so it cannot frame a publisher.
+ * 5. `unknown` (`bad-evidence`) when any checkpoint fails `verify`, is for
+ *    another DID or stream than `subject`, or there is no `verify` to check
+ *    it with. A bad witness can never cause a `conflict`, so it cannot frame
+ *    a publisher.
  * 6. `accept`: `extends-witness` when there are checkpoints, `no-witness`
  *    (a chain-only result) when there are none.
  *
@@ -33,32 +44,43 @@ export type CheckpointVerifier = (cp: WitnessCheckpoint) => Promise<boolean>;
  * several checkpoints conflict, the lowest witnessed seq is reported, as
  * `validateChain` reports the first broken seq.
  *
- * The default `verify` checks each proof against the `signingKey` the witness
- * stored. ADR-003 rule 3 trusts the key in the publisher's DID document
- * instead, so an AT caller passes
- * `(cp) => verifyCheckpoint({ ...cp, signingKey: keyFromDidDocument })`.
- * A `verify` that throws counts as a failed check.
+ * There is no default `verify`. `verifyCheckpoint` alone checks a proof
+ * against the `signingKey` the witness stored, and a witness can store its
+ * own key, so passing it would let a witness frame a publisher. An AT caller
+ * passes `(cp) => verifyCheckpoint({ ...cp, signingKey: keyFromDidDocument })`.
+ * Without checkpoints, `verify` is not needed. A `verify` that throws counts
+ * as a failed check.
  *
- * With no events there is no DID or stream to compare the checkpoints with,
- * so the caller must pass only the checkpoints for the stream it audits.
+ * `subject` is what the checkpoints are checked against, so an empty chain
+ * still rejects a signed checkpoint from another stream.
  *
- * @param events - Every event of one DID and stream, in any order, or
+ * @param subject - The DID and stream being audited.
+ * @param events - Every event of `subject`, in any order, or
  *   `"unreachable"` when the PDS could not be read.
- * @param checkpoints - The witness's checkpoints for that stream, or
+ * @param checkpoints - The witness's checkpoints for `subject`, or
  *   `"unreachable"` when the witness could not be read.
- * @param verify - Checks one checkpoint offline.
+ * @param verify - Checks one checkpoint offline. Required for any checkpoint
+ *   to count.
  * @param head - The stream's current head record, when the caller has it.
  * @returns The verdict, with the witnessed and current CIDs as evidence for
  *   a witness conflict.
+ * @throws Error if an event is for another DID or stream than `subject`.
  */
 export async function compareWithWitness(
+  subject: AuditSubject,
   events: readonly StoredEvent[] | "unreachable",
   checkpoints: readonly WitnessCheckpoint[] | "unreachable",
-  verify: CheckpointVerifier = verifyCheckpoint,
+  verify?: CheckpointVerifier,
   head?: HeadRecord,
 ): Promise<Verdict> {
   if (events === "unreachable") {
     return { verdict: "unknown", reason: "pds-unreachable" };
+  }
+  const stranger = events.find((event) => !isSubject(event, subject));
+  if (stranger !== undefined) {
+    throw new Error(
+      `event ${stranger.did}/${stranger.stream} passed to an audit of ${subject.did}/${subject.stream}`,
+    );
   }
   const chain = validateChain(events, head);
   if (chain.verdict === "conflict") return chain;
@@ -76,14 +98,13 @@ export async function compareWithWitness(
     (left, right) =>
       left.seq - right.seq || compareStrings(left.eventCid, right.eventCid),
   );
-  const subject = events[0];
   const checks = await Promise.all(
-    ordered.map(async (cp) => {
-      const sameStream =
-        subject === undefined ||
-        (cp.did === subject.did && cp.stream === subject.stream);
-      return sameStream && (await safely(verify, cp));
-    }),
+    ordered.map(
+      async (cp) =>
+        verify !== undefined &&
+        isSubject(cp, subject) &&
+        (await safely(verify, cp)),
+    ),
   );
 
   const cidAt = new Map(events.map((event) => [event.seq, event.cid]));
@@ -135,6 +156,17 @@ function witnessConflict(
       ...(currentCid === undefined ? {} : { currentCid }),
     },
   };
+}
+
+/**
+ * Whether an event or checkpoint belongs to the audited stream.
+ *
+ * @param item - Anything with a DID and stream.
+ * @param subject - The audited DID and stream.
+ * @returns True when both match.
+ */
+function isSubject(item: AuditSubject, subject: AuditSubject): boolean {
+  return item.did === subject.did && item.stream === subject.stream;
 }
 
 /**

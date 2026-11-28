@@ -181,6 +181,7 @@ async function audit(
   try {
     view.replaceRepo(snapshot.did, snapshot.rev, planRebuild(snapshot).events);
     return await compareWithWitness(
+      { did: env.PUBLISHER_DID, stream },
       view.getEvents(env.PUBLISHER_DID, stream),
       checkpoints,
       await verifierFor(env),

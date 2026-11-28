@@ -12,6 +12,7 @@ import { compareWithWitness } from "./witness.js";
 
 const DID = "did:plc:publisher";
 const STREAM = "releases";
+const SUBJECT = { did: DID, stream: STREAM };
 
 /**
  * A stored event linked to `cid-<seq - 1>`, with the CID `cid-<seq>` unless
@@ -106,20 +107,24 @@ const valid = async () => true;
 
 describe("compareWithWitness", () => {
   test("accepts a chain that extends every checkpoint", async () => {
-    expect(await compareWithWitness(chain(5), seen(5), valid)).toEqual({
-      verdict: "accept",
-      reason: "extends-witness",
-    });
+    expect(await compareWithWitness(SUBJECT, chain(5), seen(5), valid)).toEqual(
+      {
+        verdict: "accept",
+        reason: "extends-witness",
+      },
+    );
     // A signed withdrawal is a new event after the witnessed head.
-    expect(await compareWithWitness(chain(6), seen(5), valid)).toEqual({
-      verdict: "accept",
-      reason: "extends-witness",
-    });
+    expect(await compareWithWitness(SUBJECT, chain(6), seen(5), valid)).toEqual(
+      {
+        verdict: "accept",
+        reason: "extends-witness",
+      },
+    );
   });
 
   test("gives a chain-only accept with no checkpoints", async () => {
     const verify = vi.fn(valid);
-    expect(await compareWithWitness(chain(3), [], verify)).toEqual({
+    expect(await compareWithWitness(SUBJECT, chain(3), [], verify)).toEqual({
       verdict: "accept",
       reason: "no-witness",
     });
@@ -127,7 +132,9 @@ describe("compareWithWitness", () => {
   });
 
   test("reports a rewrite at the first witnessed seq that changed", async () => {
-    expect(await compareWithWitness(rewritten(5, 3), seen(5), valid)).toEqual({
+    expect(
+      await compareWithWitness(SUBJECT, rewritten(5, 3), seen(5), valid),
+    ).toEqual({
       verdict: "conflict",
       reason: "rewritten",
       evidence: { seq: 3, witnessedCid: "cid-3", currentCid: "new-3" },
@@ -135,13 +142,15 @@ describe("compareWithWitness", () => {
   });
 
   test("reports a head below a witnessed seq as truncated", async () => {
-    expect(await compareWithWitness(chain(3), seen(5), valid)).toEqual({
-      verdict: "conflict",
-      reason: "truncated",
-      evidence: { seq: 4, witnessedCid: "cid-4" },
-    });
+    expect(await compareWithWitness(SUBJECT, chain(3), seen(5), valid)).toEqual(
+      {
+        verdict: "conflict",
+        reason: "truncated",
+        evidence: { seq: 4, witnessedCid: "cid-4" },
+      },
+    );
     // Deleting every event is a truncation too.
-    expect(await compareWithWitness([], seen(2), valid)).toEqual({
+    expect(await compareWithWitness(SUBJECT, [], seen(2), valid)).toEqual({
       verdict: "conflict",
       reason: "truncated",
       evidence: { seq: 1, witnessedCid: "cid-1" },
@@ -153,7 +162,7 @@ describe("compareWithWitness", () => {
     // matches the current chain; the older ones do not.
     const checkpoints = [checkpoint(5, { eventCid: "new-5" }), ...seen(5)];
     expect(
-      await compareWithWitness(rewritten(5, 4), checkpoints, valid),
+      await compareWithWitness(SUBJECT, rewritten(5, 4), checkpoints, valid),
     ).toMatchObject({
       verdict: "conflict",
       reason: "rewritten",
@@ -164,13 +173,19 @@ describe("compareWithWitness", () => {
   test("gives the same verdict for any input order", async () => {
     const events = rewritten(6, 2);
     const checkpoints = [...seen(6), checkpoint(6, { eventCid: "new-6" })];
-    const expected = await compareWithWitness(events, checkpoints, valid);
+    const expected = await compareWithWitness(
+      SUBJECT,
+      events,
+      checkpoints,
+      valid,
+    );
     expect(expected).toMatchObject({
       reason: "rewritten",
       evidence: { seq: 2 },
     });
     expect(
       await compareWithWitness(
+        SUBJECT,
         [...events].reverse(),
         [...checkpoints].reverse(),
         valid,
@@ -182,13 +197,15 @@ describe("compareWithWitness", () => {
     const broken = chain(4);
     broken[2] = event(3, "cid-3", "someone-else");
     const verify = vi.fn(valid);
-    expect(await compareWithWitness(broken, seen(4), verify)).toEqual({
+    expect(await compareWithWitness(SUBJECT, broken, seen(4), verify)).toEqual({
       verdict: "conflict",
       reason: "broken-link",
       evidence: { seq: 3 },
     });
     // Rule 1 comes before rule 2: an unreachable witness doesn't hide it.
-    expect(await compareWithWitness(broken, "unreachable", verify)).toEqual({
+    expect(
+      await compareWithWitness(SUBJECT, broken, "unreachable", verify),
+    ).toEqual({
       verdict: "conflict",
       reason: "broken-link",
       evidence: { seq: 3 },
@@ -203,23 +220,31 @@ describe("compareWithWitness", () => {
       seq: 2,
       eventCid: "cid-2",
     };
-    expect(await compareWithWitness(chain(3), [], valid, head)).toEqual({
+    expect(
+      await compareWithWitness(SUBJECT, chain(3), [], valid, head),
+    ).toEqual({
       verdict: "conflict",
       reason: "head-mismatch",
       evidence: { seq: 2 },
     });
-    expect(await compareWithWitness(chain(2), seen(2), valid, head)).toEqual({
+    expect(
+      await compareWithWitness(SUBJECT, chain(2), seen(2), valid, head),
+    ).toEqual({
       verdict: "accept",
       reason: "extends-witness",
     });
   });
 
   test("is unknown when the PDS or the witness can't be read", async () => {
-    expect(await compareWithWitness("unreachable", seen(2), valid)).toEqual({
+    expect(
+      await compareWithWitness(SUBJECT, "unreachable", seen(2), valid),
+    ).toEqual({
       verdict: "unknown",
       reason: "pds-unreachable",
     });
-    expect(await compareWithWitness(chain(2), "unreachable", valid)).toEqual({
+    expect(
+      await compareWithWitness(SUBJECT, chain(2), "unreachable", valid),
+    ).toEqual({
       verdict: "unknown",
       reason: "witness-unreachable",
     });
@@ -231,7 +256,12 @@ describe("compareWithWitness", () => {
     const verify = async (cp: WitnessCheckpoint) =>
       cp.seq !== 9 && cp.eventCid !== "forged";
     expect(
-      await compareWithWitness(chain(3), [...seen(3), ...forged], verify),
+      await compareWithWitness(
+        SUBJECT,
+        chain(3),
+        [...seen(3), ...forged],
+        verify,
+      ),
     ).toEqual({
       verdict: "unknown",
       reason: "bad-evidence",
@@ -241,7 +271,9 @@ describe("compareWithWitness", () => {
 
   test("reports a verified conflict even when another checkpoint is bad", async () => {
     const verify = async (cp: WitnessCheckpoint) => cp.seq !== 1;
-    expect(await compareWithWitness(chain(2), seen(4), verify)).toMatchObject({
+    expect(
+      await compareWithWitness(SUBJECT, chain(2), seen(4), verify),
+    ).toMatchObject({
       verdict: "conflict",
       reason: "truncated",
       evidence: { seq: 3 },
@@ -252,7 +284,9 @@ describe("compareWithWitness", () => {
     const verify = async () => {
       throw new Error("plc down");
     };
-    expect(await compareWithWitness(chain(2), seen(2), verify)).toEqual({
+    expect(
+      await compareWithWitness(SUBJECT, chain(2), seen(2), verify),
+    ).toEqual({
       verdict: "unknown",
       reason: "bad-evidence",
       evidence: { seq: 1, witnessedCid: "cid-1" },
@@ -262,22 +296,56 @@ describe("compareWithWitness", () => {
   test("won't compare against a verified checkpoint from another stream", async () => {
     // A witness answers with a real, signed head from a longer stream.
     const other = checkpoint(7, { stream: "other" });
-    expect(await compareWithWitness(chain(3), [other], valid)).toEqual({
-      verdict: "unknown",
-      reason: "bad-evidence",
-      evidence: { seq: 7, witnessedCid: "cid-7" },
-    });
-    const otherDid = checkpoint(7, { did: "did:plc:someone" });
-    expect(await compareWithWitness(chain(3), [otherDid], valid)).toMatchObject(
-      { reason: "bad-evidence" },
+    expect(await compareWithWitness(SUBJECT, chain(3), [other], valid)).toEqual(
+      {
+        verdict: "unknown",
+        reason: "bad-evidence",
+        evidence: { seq: 7, witnessedCid: "cid-7" },
+      },
     );
+    const otherDid = checkpoint(7, { did: "did:plc:someone" });
+    expect(
+      await compareWithWitness(SUBJECT, chain(3), [otherDid], valid),
+    ).toMatchObject({ reason: "bad-evidence" });
   });
 
-  test("checks proofs with verifyCheckpoint by default", async () => {
-    // The stub proof is empty, so the real check fails it.
-    expect(await compareWithWitness(chain(2), seen(2))).toMatchObject({
+  test("checks the DID and stream on an empty chain too", async () => {
+    // A signed checkpoint for the requested stream: everything was deleted.
+    expect(
+      await compareWithWitness(SUBJECT, [], [checkpoint(2)], valid),
+    ).toEqual({
+      verdict: "conflict",
+      reason: "truncated",
+      evidence: { seq: 2, witnessedCid: "cid-2" },
+    });
+    // A signed checkpoint for another stream of the same publisher.
+    const other = checkpoint(2, { stream: "other" });
+    expect(await compareWithWitness(SUBJECT, [], [other], valid)).toEqual({
       verdict: "unknown",
       reason: "bad-evidence",
+      evidence: { seq: 2, witnessedCid: "cid-2" },
     });
+  });
+
+  test("treats checkpoints as bad evidence when there is no verifier", async () => {
+    // With a verifier this would be `truncated`. Without one, nothing is
+    // checked, so it can't be a conflict.
+    expect(await compareWithWitness(SUBJECT, chain(3), seen(5))).toEqual({
+      verdict: "unknown",
+      reason: "bad-evidence",
+      evidence: { seq: 1, witnessedCid: "cid-1" },
+    });
+    // The chain-only path needs no verifier.
+    expect(await compareWithWitness(SUBJECT, chain(3), [])).toEqual({
+      verdict: "accept",
+      reason: "no-witness",
+    });
+  });
+
+  test("throws for an event from another DID or stream than the subject", async () => {
+    const stranger = { ...event(1), stream: "other" };
+    await expect(
+      compareWithWitness(SUBJECT, [stranger], [], valid),
+    ).rejects.toThrow("other");
   });
 });
