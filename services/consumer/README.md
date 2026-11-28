@@ -11,7 +11,13 @@ Verified firehose subscription, DID allowlist, view, and checkpoint.
 
 ## Freshness
 
-`freshVerdict(stored, verifiedAsOf, now, maxAgeMs)` (`src/freshness.ts`) decides what verdict to report. If the last successful check against the PDS is older than `FRESHNESS_MS` (default 30 seconds, read with `freshnessMs`), or there never was one, the answer is `unknown` with reason `stale`, whatever the stored verdict was. Storing `verified_as_of` with each verdict comes with #68.
+`freshVerdict(stored, verifiedAsOf, now, maxAgeMs)` (`src/freshness.ts`) decides what verdict to report. If the last successful check against the PDS is older than `FRESHNESS_MS` (default 30 seconds, read with `freshnessMs`), or there never was one, the answer is `unknown` with reason `stale`, whatever the stored verdict was. Each verdict stores the last verified PDS observation separately from the time of the audit.
+
+## Auditing
+
+The consumer audits every known stream on startup. After each applied commit it audits the committing DID’s streams. The audit uses the current verified heads, event updates and deletions while retaining original events in the view. A signed event or head that fails validation at a known stream key yields a conflict until that record is replaced or deleted. SQLite keeps the latest verdict, reason, evidence and check time for each DID and stream. Run `npx trustlab audit [--db <path>]` to print them.
+
+By default only the chain is checked (A0). Set `WITNESS_URL` to the witness HTTP service's base URL for A1. Checkpoints from `GET /checkpoints?did=…&stream=…` must validate against the contracts and the publisher's DID signing key.
 
 ## Allowlist
 

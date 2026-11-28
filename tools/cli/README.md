@@ -18,15 +18,15 @@ npx trustlab <command> --help
 
 Exit codes: 0 success, 2 bad arguments, 1 anything else.
 
-| Command                          | Calls                                    | State                   |
-| -------------------------------- | ---------------------------------------- | ----------------------- |
-| `stack up\|down\|reset\|seed`    | `infra/scripts`                          | not implemented         |
-| `publish`, `correct`, `withdraw` | `@trustlab/publisher`                    | works; needs the stack  |
-| `tamper edit\|rewrite\|truncate` | `@trustlab/publisher`                    | works; needs the stack  |
-| `consume [--fresh]`              | `@trustlab/consumer`                     | not implemented         |
-| `witness`                        | `@trustlab/witness`                      | not implemented         |
-| `audit`                          | `@trustlab/auditor` through the consumer | not implemented         |
-| `demo --scenario`                | `@trustlab/harness`                      | works; resets the stack |
+| Command                          | Calls                 | State                   |
+| -------------------------------- | --------------------- | ----------------------- |
+| `stack up\|down\|reset\|seed`    | `infra/scripts`       | not implemented         |
+| `publish`, `correct`, `withdraw` | `@trustlab/publisher` | works; needs the stack  |
+| `tamper edit\|rewrite\|truncate` | `@trustlab/publisher` | works; needs the stack  |
+| `consume [--fresh]`              | `@trustlab/consumer`  | not implemented         |
+| `witness`                        | `@trustlab/witness`   | not implemented         |
+| `audit [--db <path>]`            | `@trustlab/consumer`  | prints stored verdicts  |
+| `demo --scenario`                | `@trustlab/harness`   | works; resets the stack |
 
 `demo` prints one line per run: `demo <scenario> run=<n> config=<c> verdict=<v|none>`.
 

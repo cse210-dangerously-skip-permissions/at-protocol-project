@@ -103,5 +103,5 @@ With one honest witness that the consumer queries directly, every checkpoint is 
 - The A0/A1 detection rate is measured on witness-only scenarios. Chain-only scenarios are reported separately so they do not inflate A1's advantage.
 - In A0, the consumer audits a fresh rebuild and does not compare against its own earlier view. A long-running consumer that kept its view would itself act as a witness for everything it saw.
 - The CID-change flags from #67 are reported alongside the verdict and do not change it. #67 and #68 build to that.
-- `head-behind` and `pds-unreachable` are new reason codes for #79 and #80. `head-behind` goes away once #63 lands.
+- `head-behind` and `pds-unreachable` are new reason codes for #79 and #80. `head-behind` goes away once #63 lands. In #68, a signed record at a valid stream record key that fails contract validation yields `conflict`, with reason `invalid-event` for an event or `invalid-head` for a head.
 - Adding more witnesses or sharing checkpoints between consumers requires witness signatures (#77) and a revisit of this ADR.

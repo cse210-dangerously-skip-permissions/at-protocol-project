@@ -5,7 +5,12 @@ import {
   startFirehose,
   type VerifiedCommit,
 } from "@trustlab/consumer";
-import { login, publishEvent, type Published } from "@trustlab/publisher";
+import {
+  login,
+  publishEvent,
+  tamperEdit,
+  type Published,
+} from "@trustlab/publisher";
 import { afterAll, beforeAll, expect, test, vi } from "vitest";
 
 // Needs the local AT network: `npm run stack:up`.
@@ -88,6 +93,23 @@ test("saves verified events from the allowlisted publisher and drops other DIDs"
   const { cursor, revs } = store.getCheckpoint();
   expect(cursor).toBe(commits.at(-1)?.cursor);
   expect(revs[env.PUBLISHER_DID]).toBe(commits.at(-1)?.rev);
+
+  const latest = () =>
+    store
+      .latestVerdicts()
+      .find((row) => row.did === session.did && row.stream === stream)?.verdict;
+  await vi.waitFor(() => expect(latest()?.verdict).toBe("accept"));
+  await tamperEdit(session, stream, 2);
+  await vi.waitFor(
+    () =>
+      expect(latest()).toEqual({
+        verdict: "conflict",
+        reason: "broken-link",
+        evidence: { seq: 3 },
+      }),
+    { timeout: 10_000 },
+  );
+  expect(store.getEvents(session.did, stream)[1]?.cid).toBe(published[1]?.cid);
 
   // A real signed delete is verified and logged. Real publishers never delete
   // events; this throwaway stream exists only for this check.

@@ -4,12 +4,12 @@ import { parseArgs } from "node:util";
 import { loadLocalEnv, log } from "@trustlab/contracts";
 import { allowlistFromEnv } from "./allowlist.js";
 import { startFirehose } from "./firehose.js";
-import { ConsumerStore } from "./store.js";
+import { witnessClient } from "./audit.js";
+import { ConsumerStore, DEFAULT_DB } from "./store.js";
 
 const USAGE = "usage: npm run consume -- [--fresh] [--db <path>] [--pds <url>]";
 
-/** Where the consumer keeps its view and checkpoint unless told otherwise. */
-export const DEFAULT_DB = "consumer.db";
+export { DEFAULT_DB } from "./store.js";
 
 /**
  * Pick the database and PDS from `consume` arguments.
@@ -81,6 +81,9 @@ export async function main(argv: readonly string[]): Promise<number> {
   const firehose = startFirehose({
     env,
     store,
+    ...(process.env.WITNESS_URL
+      ? { witness: witnessClient(process.env.WITNESS_URL, env.PLC_URL) }
+      : {}),
     allow: allowlistFromEnv(env).allow,
   });
   log(

@@ -75,7 +75,12 @@ function headUpdate(did: string, rev: string): Event {
     collection: HEAD_NSID,
     rkey: headRkey("releases"),
     cid: { toString: () => "cid-head" },
-    record: {},
+    record: {
+      $type: HEAD_NSID,
+      stream: "releases",
+      seq: 1,
+      eventCid: PREV_CID,
+    },
   } as unknown as Event;
 }
 
@@ -188,16 +193,154 @@ test("resumes from the store's cursor", async () => {
   expect(libOpts().runner!.getCursor()).toBe(7);
 });
 
-test("does not save a signed record that breaks the event contract", async () => {
-  const bad = eventCreate(ALLOWED, 1, "rev-a") as { record: object };
-  bad.record = { ...bad.record, seq: 0 };
-  await deliver(ALLOWED, 7, [bad as unknown as Event]);
+test("a startup or post-commit audit failure cannot discard a saved commit or its callback", async () => {
+  const fail = () => {
+    throw new Error("audit unavailable");
+  };
+  vi.spyOn(store, "auditStreams")
+    .mockImplementationOnce(fail)
+    .mockImplementationOnce(fail);
+  const sub = startFirehose({
+    env,
+    store,
+    allow: () => true,
+    onCommit: (commit) => saved.push(commit),
+  });
+  await deliver(ALLOWED, 1, [eventCreate(ALLOWED, 1, "a")]);
+  await sub.stop();
+  expect(store.getCheckpoint().cursor).toBe(1);
+  expect(store.getEvents(ALLOWED, "releases")).toHaveLength(1);
+  expect(saved.map((commit) => commit.cursor)).toEqual([1]);
+  expect(console.error).toHaveBeenCalledWith(
+    expect.stringContaining("startup audit failed"),
+  );
+  expect(console.error).toHaveBeenCalledWith(
+    expect.stringContaining("audit failed for saved commit seq=1"),
+  );
+});
 
-  expect(saved).toEqual([]);
-  expect(store.getEvents(ALLOWED, "releases")).toEqual([]);
-  expect(console.error).toHaveBeenCalled();
+test("startup queries all publishers and a commit queries only its publisher", async () => {
+  store.replaceRepo(OTHER, "a", [
+    {
+      did: OTHER,
+      stream: "other",
+      seq: 1,
+      cid: "one",
+      rkey: eventRkey("other", 1),
+      record: { seq: 1, kind: "release" },
+    },
+  ]);
+  const checkpoints = vi.fn().mockResolvedValue([]);
+  const sub = startFirehose({
+    env,
+    store,
+    allow: () => true,
+    witness: { checkpoints, verify: vi.fn() },
+  });
+  await deliver(ALLOWED, 1, [eventCreate(ALLOWED, 1, "a")]);
+  await sub.stop();
+  expect(checkpoints.mock.calls).toEqual([
+    [OTHER, "other"],
+    [ALLOWED, "releases"],
+  ]);
+});
 
-  // The bad commit doesn't block the ones after it.
-  await deliver(ALLOWED, 8, [eventCreate(ALLOWED, 1, "rev-b")]);
-  expect(saved.map((c) => c.cursor)).toEqual([8]);
+test.each(["create", "update"])(
+  "persists conflict evidence for a malformed event %s and clears it on repair",
+  async (operation) => {
+    const valid = eventCreate(ALLOWED, 1, "a");
+    if (operation === "update") await deliver(ALLOWED, 1, [valid]);
+    const bad = {
+      ...valid,
+      event: operation,
+      record: {},
+      cid: { toString: () => "invalid-cid" },
+    } as unknown as Event;
+    await deliver(ALLOWED, 2, [bad]);
+    await deliver(ALLOWED, 3, [
+      { ...headUpdate(ALLOWED, "c"), event: "delete" } as Event,
+    ]);
+    expect(store.getCheckpoint().cursor).toBe(3);
+    expect(store.getEvents(ALLOWED, "releases")).toHaveLength(
+      operation === "update" ? 1 : 0,
+    );
+    expect(store.latestVerdicts()[0]?.verdict).toEqual({
+      verdict: "conflict",
+      reason: "invalid-event",
+      evidence: { seq: 1, currentCid: "invalid-cid" },
+    });
+    await deliver(ALLOWED, 4, [{ ...valid, event: "update" } as Event]);
+    expect(store.latestVerdicts()[0]?.verdict.verdict).toBe("accept");
+  },
+);
+
+test("a malformed head flags its stream and preserves sibling events", async () => {
+  const head = headUpdate(ALLOWED, "a");
+  await deliver(ALLOWED, 1, [
+    { ...head, record: {} } as Event,
+    eventCreate(ALLOWED, 1, "a"),
+  ]);
+  expect(store.getEvents(ALLOWED, "releases")).toHaveLength(1);
+  expect(store.latestVerdicts()[0]?.verdict).toEqual({
+    verdict: "conflict",
+    reason: "invalid-head",
+  });
+  await deliver(ALLOWED, 2, [{ ...head, event: "delete" } as Event]);
+  expect(store.latestVerdicts()[0]?.verdict.verdict).toBe("accept");
+});
+
+test("audit follows updates, deletions and re-creates while preserving the original event", async () => {
+  const create = eventCreate(ALLOWED, 1, "a");
+  const update = {
+    ...create,
+    event: "update",
+    cid: { toString: () => "edited" },
+  } as unknown as Event;
+  const recreate = {
+    ...create,
+    cid: { toString: () => "recreated" },
+  } as unknown as Event;
+  const del = { ...create, event: "delete" } as Event;
+  const head = headUpdate(ALLOWED, "a");
+  const delHead = { ...head, event: "delete" } as Event;
+  await deliver(ALLOWED, 1, [create, head]);
+  expect(store.latestVerdicts()[0]?.verdict.reason).toBe("head-mismatch");
+  await deliver(ALLOWED, 2, [update, delHead]);
+  expect(store.auditEvents(ALLOWED, "releases")[0]?.cid).toBe("edited");
+  await deliver(ALLOWED, 3, [del]);
+  expect(store.auditEvents(ALLOWED, "releases")).toEqual([]);
+  await deliver(ALLOWED, 4, [recreate]);
+  expect(store.auditEvents(ALLOWED, "releases")[0]?.cid).toBe("recreated");
+  expect(store.getEvents(ALLOWED, "releases")[0]?.cid).toBe("cid-event-1");
+});
+
+test("startup audits existing events without refreshing the last verified PDS time", async () => {
+  store.replaceRepo(ALLOWED, "a", [
+    {
+      did: ALLOWED,
+      stream: "saved",
+      seq: 1,
+      rkey: eventRkey("saved", 1),
+      cid: "one",
+      record: { seq: 1, kind: "release" },
+    },
+  ]);
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2040-01-01T00:00:00Z"));
+  const sub = startFirehose({ env, store, allow: () => true });
+  try {
+    await sub.stop();
+  } finally {
+    vi.useRealTimers();
+  }
+  expect(store.latestVerdicts()[0]?.verifiedAsOf).not.toBe(
+    store.latestVerdicts()[0]?.checkedAt,
+  );
+  expect(store.latestVerdicts()).toMatchObject([
+    {
+      stream: "saved",
+      verdict: { verdict: "accept" },
+      verifiedAsOf: expect.any(String),
+    },
+  ]);
 });

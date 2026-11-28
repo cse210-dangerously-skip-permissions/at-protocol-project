@@ -12,7 +12,11 @@ export {
 } from "./firehose.js";
 export {
   ConsumerStore,
+  readLatestVerdicts,
+  DEFAULT_DB,
   EventConflictError,
   type CommitEvent,
   type VerifiedCommit,
 } from "./store.js";
+
+export { auditStream, witnessClient, type WitnessClient } from "./audit.js";
