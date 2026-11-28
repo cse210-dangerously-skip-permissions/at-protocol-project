@@ -15,6 +15,7 @@
     "@atproto/xrpc-server": "^0.13.11",
     "@trustlab/auditor": "*",
     "@trustlab/contracts": "*",
-    "@trustlab/publisher": "*"
+    "@trustlab/publisher": "*",
+    "@trustlab/recovery": "*"
   }
 }
