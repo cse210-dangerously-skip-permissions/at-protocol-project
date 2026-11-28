@@ -1,5 +1,7 @@
 export const packageName = "@trustlab/recovery";
 
+export { type BufferedCommit, drainBuffer } from "./cutover.js";
+
 export {
   planRebuild,
   type Gap,
